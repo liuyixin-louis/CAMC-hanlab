@@ -13,9 +13,9 @@ import copy
 
 class ChannelPruningEnv:
     """
-    Env for channel pruning search；作者自己写的通道剪裁环境
+    Env for channel pruning search；
     """
-    def __init__(self, model, checkpoint, data, preserve_ratio, args, n_data_worker=4,
+    def __init__(self, model, checkpoint, data, args, n_data_worker=4,
                  batch_size=256, export_model=False, use_new_input=False):
         # default setting
         # 
@@ -27,13 +27,13 @@ class ChannelPruningEnv:
         self.n_data_worker = n_data_worker
         self.batch_size = batch_size
         self.data_type = data # 采用的数据集，是个字符串
-        self.preserve_ratio = preserve_ratio
 
 
         # options from args
         self.args = args
         self.lbound = args.lbound
         self.rbound = args.rbound
+        self.preserve_ratio = 0.7 # we will start from 0.7
 
         
         self.use_real_val = args.use_real_val # 是否采用验证集
@@ -46,9 +46,6 @@ class ChannelPruningEnv:
 
         self.export_model = export_model    # bool
         self.use_new_input = use_new_input
-
-        # sanity check
-        assert self.preserve_ratio > self.lbound, 'Error! You can make achieve preserve_ratio smaller than lbound!'
 
         # prepare data
         self._init_data()
@@ -64,8 +61,10 @@ class ChannelPruningEnv:
         self._build_state_embedding()
 
         # build reward
-        self.reset()  # restore weight
-        self.org_acc = self._validate(self.val_loader, self.model)
+        # restore weight
+        self.reset()  
+        self.org_acc = self._validate(self.val_loader, self.model)[0]
+        
         print('=> original acc: {:.3f}%'.format(self.org_acc))
         self.org_model_size = sum(self.wsize_list)
         print('=> original weight size: {:.4f} M param'.format(self.org_model_size * 1. / 1e6))
@@ -74,7 +73,7 @@ class ChannelPruningEnv:
         print([self.layer_info_dict[idx]['flops']/1e6 for idx in sorted(self.layer_info_dict.keys())])
         print('=> original FLOPs: {:.4f} M'.format(self.org_flops * 1. / 1e6))
 
-        self.expected_preserve_computation = self.preserve_ratio * self.org_flops
+        self.expected_preserve_computation = self.org_flops
 
         self.reward = eval(args.reward)
 
@@ -84,7 +83,17 @@ class ChannelPruningEnv:
 
         self.org_w_size = sum(self.wsize_list)
 
-    def step(self, action):
+
+        # log writer
+        self.text_writer = None
+
+    def set_output(self,output):
+        import os
+        path = os.getcwd()
+        path = path + output[1:]
+        self.text_writer = open(os.path.join(path, 'log.txt'), 'w+')
+
+    def step(self, action,epoch):
         """根据输入的动作，对环境进行修改并返回环境的反馈信息"""
         # Pseudo prune and get the corresponding statistics.
         # The real pruning happens till the end of all pseudo pruning
@@ -102,7 +111,6 @@ class ChannelPruningEnv:
         action, d_prime, preserve_idx = self.prune_kernel(self.prunable_idx[self.cur_ind], action, preserve_idx)
 
         if not self.visited[self.cur_ind]:
-            # 第一次访问这一层，并且是mobilenetv2时
             for group in self.shared_idx:
                 if self.cur_ind in group:  # set the shared ones
                     for g_idx in group:
@@ -114,7 +122,7 @@ class ChannelPruningEnv:
         if self.export_model:  # export checkpoint
             print('# Pruning {}: ratio: {}, d_prime: {}'.format(self.cur_ind, action, d_prime))
 
-        # 
+
         self.strategy.append(action)  # save action to strategy；这一层的保留率加进去
         self.d_prime_list.append(d_prime)
 
@@ -128,29 +136,45 @@ class ChannelPruningEnv:
             assert len(self.strategy) == len(self.prunable_idx)
             current_flops = self._cur_flops()
             acc_t1 = time.time()
-            acc = self._validate(self.val_loader, self.model) # 验证
+            acc,acc_ = self._validate(self.val_loader, self.model) # 验证
             acc_t2 = time.time()
             self.val_time = acc_t2 - acc_t1
             compress_ratio = current_flops * 1. / self.org_flops
-            info_set = {'compress_ratio': compress_ratio, 'accuracy': acc, 'strategy': self.strategy.copy()}
+            info_set = {'compress_ratio': compress_ratio, 'accuracy': acc, 'strategy': self.strategy.copy(),"accuracy_":acc_}
             
             # 修改：接口变动
             reward = self.reward(self, acc, current_flops,self.preserve_ratio,compress_ratio)
-            # reward = None
-            # if self.args.using_prembedding:
-            #     reward = self.reward(self, acc, current_flops,self.preserve_ratio,compress_ratio)
-            # else:
-            #     reward = self.reward(self, acc, current_flops)
+
+
+
             loc = int((self.preserve_ratio-0.3)/0.2)
             if reward > self.best_reward[loc]:
-                # 
+                import os 
+                
                 self.best_reward[loc] = reward
                 self.best_strategy = self.strategy.copy()
                 self.best_d_prime_list = self.d_prime_list.copy()
                 prGreen('===Target:{}==='.format(self.preserve_ratio))
-                prGreen('New best reward: {:.4f}, acc: {:.4f}, compress: {:.4f},target ratio:{:.4f}'.format(reward, acc, compress_ratio,self.preserve_ratio))
+                prGreen('New best reward: {:.4f}, acc: {:.4f},acc_:{:.4f} compress: {:.4f},target ratio:{:.4f}'.format(reward, acc,acc_, compress_ratio,self.preserve_ratio))
                 prGreen('New best policy: {}'.format(self.best_strategy))
                 prGreen('New best d primes: {}'.format(self.best_d_prime_list))
+                
+
+                # write to txt log
+                self.text_writer.write('============TargetRatio:{}============\n'.format(self.preserve_ratio))
+                self.text_writer.write(
+                '#epoch: {}; acc: {:.4f},acc_:{:.4f};TargetRatio: {:.4f};DoneRatio: {:.4f};ArchivePercent:{:.4f};PrunStrategy:{} \n'.format(epoch,
+                                                                                 info_set['accuracy'],info_set['accuracy_'],
+                                                                                 self.preserve_ratio,info_set['compress_ratio'],info_set['compress_ratio']/self.preserve_ratio,info_set['strategy']))
+            
+                self.text_writer.write('New best reward: {:.4f}, acc: {:.4f},acc_:{:.4f} compress: {:.4f},target ratio:{:.4f}\n' \
+                .format(reward, acc,acc_, compress_ratio,self.preserve_ratio))
+                self.text_writer.write('New best policy: {}\n'.format(self.best_strategy))
+                self.text_writer.write('New best d primes: {}\n'.format(self.best_d_prime_list))
+                self.text_writer.write('================================')
+
+                
+                
 
             obs = self.layer_embedding[self.cur_ind, :].copy()  # actually the same as the last state
             done = True
@@ -172,15 +196,14 @@ class ChannelPruningEnv:
         self.layer_embedding[self.cur_ind][-2] = sum(self.flops_list[self.cur_ind + 1:]) * 1. / self.org_flops  # rest
         self.layer_embedding[self.cur_ind][-1] = self.strategy[-1]  # last action
         obs = self.layer_embedding[self.cur_ind, :].copy()
-        
         return obs, reward, done, info_set
 
     def reset(self):
         
         # restore env by loading the checkpoint
         self.model.load_state_dict(self.checkpoint)
-        self.cur_ind = 0 # 剪裁到的层索引
-        self.strategy = []  # pruning strategy
+        self.cur_ind = 0 
+        self.strategy = []  
         self.d_prime_list = []
         self.strategy_dict = copy.deepcopy(self.min_strategy_dict) 
 
@@ -211,7 +234,6 @@ class ChannelPruningEnv:
         assert (preserve_ratio <= 1.)
 
         if preserve_ratio == 1:  # do not prune
-            # 
             return 1., op.weight.size(1), None  # TODO: should be a full index
             # n, c, h, w = op.weight.size()
             # mask = np.ones([c], dtype=bool)
@@ -223,7 +245,7 @@ class ChannelPruningEnv:
         n, c = op.weight.size(0), op.weight.size(1)
         d_prime = format_rank(c * preserve_ratio)   # 确定这一层要保留的数目
 
-        # 在干嘛呢？ channelround默认为8
+        # 
         d_prime = int(np.ceil(d_prime * 1. / self.channel_round) * self.channel_round) 
         if d_prime > c:
             d_prime = int(np.floor(c * 1. / self.channel_round) * self.channel_round)
@@ -325,7 +347,7 @@ class ChannelPruningEnv:
             flop = self.layer_info_dict[idx]['flops']
             buffer_flop = self._get_buffer_flops(idx)
 
-            # 看不是很懂，这里应该是要算本层的运算量和其他层运算量的关系
+            
             if i == self.cur_ind - 1:  # TODO: add other member in the set
                 this_comp += flop * self.strategy_dict[idx][0]
                 # add buffer (but not influenced by ratio)
@@ -396,12 +418,12 @@ class ChannelPruningEnv:
     def _build_index(self):
         """一些索引的构建"""
         self.prunable_idx = [] # 可剪裁的索引
-        self.prunable_ops = [] # 可剪裁的选项
+        self.prunable_ops = [] # 可剪裁的网络
         
         self.layer_type_dict = {} # 类型
         self.strategy_dict = {} # 策略dict
-        self.buffer_dict = {} # 缓冲池dict
-        this_buffer_list = [] # 缓存列表
+        self.buffer_dict = {} # 装dwconv的dict
+        this_buffer_list = [] # 装dwconv
         self.org_channels = [] # 每层输入特征通道数或者特征维度
 
 
@@ -601,7 +623,6 @@ class ChannelPruningEnv:
                 this_state.append(np.prod(m.weight.size()))  # weight size
 
             n = int((self.preserve_ratio - 0.3 )/0.2)
-            # n = np.random.choice(3)
             discrete_status = [0,0,0]
             discrete_status[n] = 1
             this_state+=discrete_status
@@ -626,14 +647,13 @@ class ChannelPruningEnv:
         self.layer_embedding = layer_embedding
 
     def change(self):
-        if self.args.using_prembedding:
-            # 采样本轮剪裁率
-            self.layer_embedding[:, -6:-3] = 0 # 重置，debug
-
-            n = np.random.choice(3)
-            self.preserve_ratio = n*0.2+0.3
-            self.expected_preserve_computation = self.preserve_ratio * sum(self.flops_list)
-            self.layer_embedding[:,-6+n] = 1 # 更新状态向量
+        # if self.args.using_prembedding:
+        # 采样本轮剪裁率
+        self.layer_embedding[:, -6:-3] = 0 # 重置，debug
+        n = np.random.choice(3)
+        self.preserve_ratio = n*0.2+0.3
+        self.expected_preserve_computation = self.preserve_ratio * sum(self.flops_list)
+        self.layer_embedding[:,-6+n] = 1 # 更新状态向量
 
     def _validate(self, val_loader, model, verbose=False):
         '''
@@ -678,8 +698,10 @@ class ChannelPruningEnv:
             print('* Test loss: %.3f    top1: %.3f    top5: %.3f    time: %.3f' %
                   (losses.avg, top1.avg, top5.avg, t2 - t1))
         if self.acc_metric == 'acc1':
-            return top1.avg
+            return (top1.avg,top5.avg)
         elif self.acc_metric == 'acc5':
-            return top5.avg
+            return (top5.avg,top1.avg)
         else:
             raise NotImplementedError
+    def finish():
+        self.text_writer.close()

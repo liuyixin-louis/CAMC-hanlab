@@ -17,13 +17,11 @@ from lib.utils import accuracy, AverageMeter, progress_bar, get_output_folder
 from lib.data import get_dataset
 from lib.net_measure import measure_model
 
-# from pytorchtools import EarlyStopping
 from lib.utils import EarlyStopping
 # early stopping patience; how long to wait after last time validation loss improved.
 patience = 5
 
 
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train Network')
@@ -46,27 +44,94 @@ def parse_args():
     return parser.parse_args()
 
 
+# def _create_cifar10_model(arch, pretrained):
+#     if pretrained:
+#         raise ValueError("Model {} (CIFAR10) does not have a pretrained model".format(arch))
+#     try:
+#         model = cifar10_models.__dict__[arch]()
+#     except KeyError:
+#         raise ValueError("Model {} is not supported for dataset CIFAR10".format(arch))
+#     return model
+
+
+# def _create_mnist_model(arch, pretrained):
+#     if pretrained:
+#         raise ValueError("Model {} (MNIST) does not have a pretrained model".format(arch))
+#     try:
+#         model = mnist_models.__dict__[arch]()
+#     except KeyError:
+#         raise ValueError("Model {} is not supported for dataset MNIST".format(arch))
+#     return model
+
+
+
+# def _create_imagenet_model(arch, pretrained):
+#     dataset = "imagenet"
+#     cadene = False
+#     model = None
+#     if arch in RESNET_SYMS:
+#         model = imagenet_extra_models.__dict__[arch](pretrained=pretrained)
+#     elif arch in TORCHVISION_MODEL_NAMES:
+#         try:
+#             if is_inception(arch):
+#                 model = getattr(torch_models, arch)(pretrained=pretrained, transform_input=False)
+#             else:
+#                 model = getattr(torch_models, arch)(pretrained=pretrained)
+#             if arch == "mobilenet_v2":
+#                 patch_torchvision_mobilenet_v2(model)
+#         except NotImplementedError:
+#             # In torchvision 0.3, trying to download a model that has no
+#             # pretrained image available will raise NotImplementedError
+#             if not pretrained:
+#                 raise
+#     if model is None and (arch in imagenet_extra_models.__dict__) and not pretrained:
+#         model = imagenet_extra_models.__dict__[arch]()
+#     if model is None and (arch in pretrainedmodels.model_names):
+#         cadene = True
+#         model = pretrainedmodels.__dict__[arch](
+#             num_classes=1000,
+#             pretrained=(dataset if pretrained else None))
+#     if model is None:
+#         error_message = ''
+#         if arch not in IMAGENET_MODEL_NAMES:
+#             error_message = "Model {} is not supported for dataset ImageNet".format(arch)
+#         elif pretrained:
+#             error_message = "Model {} (ImageNet) does not have a pretrained model".format(arch)
+#         raise ValueError(error_message or 'Failed to find model {}'.format(arch))
+#     return model, cadene
+
 def get_model():
-    # print('=> Building model..')
-    # if args.model == 'mobilenet':
-    #     from models.mobilenet import MobileNet
-    #     net = MobileNet(n_class=1000)
-    # elif args.model == 'mobilenet_0.5flops':
-    #     from models.mobilenet import MobileNet
-    #     net = MobileNet(n_class=1000, profile='0.5flops')
-    # else:
-    #     raise NotImplementedError
-    # return net.cuda() if use_cuda else net
-    from models.mobilenet import MobileNet
-    if args.model == 'mobilenet':
-        net = MobileNet(n_class=10)
-    elif args.model == 'mobilenet_0.3flops':
-        net = MobileNet(n_class=10, profile='0.3flops')
-    elif args.model == 'mobilenet_0.5flops':
-        net = MobileNet(n_class=10, profile='0.5flops')
-    elif args.model == 'mobilenet_0.7flops':
-        net = MobileNet(n_class=10, profile='0.7flops')
-    else:
+    """
+    get the corresponding model arch of the specific dataset
+    """
+    SUPPORTED_DATASETS = ('imagenet', 'cifar10', 'mnist')
+
+    # ensure the dataset is supported
+    dataset = args.dataset.lower()
+    if dataset not in SUPPORTED_DATASETS:
+        raise ValueError('Dataset {} is not supported'.format(dataset))
+
+    net = None
+    cadene = None
+
+    if args.dataset == 'cifar10':
+        if args.models == "mobilenet":
+            from models.mobilenet import MobileNet
+            net = MobileNet(n_class=10)
+        # else:
+        #     net = _create_cifar10_model(arch, pretrained)
+
+    elif args.dataset == 'imagenet':
+        if args.models =="mobilenet":
+            from models.mobilenet import MobileNet
+            net = MobileNet(n_class=1000)
+        # else:
+        #     net, cadene = _create_imagenet_model(arch, pretrained)
+
+    # elif args.dataset == 'mnist':
+    #     net = _create_mnist_model(arch, pretrained)
+
+    if net is None:
         raise NotImplementedError
     
     return net.cuda() if use_cuda else net
@@ -97,12 +162,15 @@ def train(epoch, train_loader):
         losses.update(loss.item(), inputs.size(0))
         top1.update(prec1.item(), inputs.size(0))
         top5.update(prec5.item(), inputs.size(0))
+
+
         # timing
         batch_time.update(time.time() - end)
         end = time.time()
 
         progress_bar(batch_idx, len(train_loader), 'Loss: {:.3f} | Acc1: {:.3f}% | Acc5: {:.3f}%'
                      .format(losses.avg, top1.avg, top5.avg))
+
     writer.add_scalar('loss/train', losses.avg, epoch)
     writer.add_scalar('acc/train_top1', top1.avg, epoch)
     writer.add_scalar('acc/train_top5', top5.avg, epoch)
@@ -187,8 +255,6 @@ def save_checkpoint(state, is_best, checkpoint_dir='.'):
 
 if __name__ == '__main__':
 
-    
-
     # 预处理
     args = parse_args()
     
@@ -217,8 +283,7 @@ if __name__ == '__main__':
 
 
     # 模型
-    
-    
+
     # net = get_model()  # for measure
     # IMAGE_SIZE = 224 if args.dataset == 'imagenet' else 32
     # n_flops, n_params = measure_model(net, IMAGE_SIZE, IMAGE_SIZE)

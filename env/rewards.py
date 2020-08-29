@@ -27,6 +27,5 @@ def acc_normalize(net, acc, flops,pre_ex,pre_act):
         acc_exp = 0.91
     else:
         raise AssertionError
-    # error = (100 - acc) * 0.01
-
+    
     return acc* 0.01 /acc_exp

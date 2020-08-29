@@ -1,4 +1,42 @@
-// search
+
+// search imagetnet on cifar10
+// {
+//     // 使用 IntelliSense 了解相关属性。 
+//     // 悬停以查看现有属性的描述。
+//     // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+//     "version": "0.2.0",
+//     "python.terminal.activateEnvironment":true,
+//     "configurations": [
+//         {
+//             "name": "Python: 当前文件",
+//             "type": "python",
+//             "request": "launch",
+//             "program": "${file}",
+//             "console": "integratedTerminal",
+//             "cwd": "${fileDirname}",
+//             "args":[
+//                 "--job","train",
+//                 "--model","mobilenet" ,
+//                 "--dataset","cifar10",
+//                 "--lbound","0.2" ,
+//                 "--rbound","1" ,
+//                 "--reward","acc_reward" ,
+//                 "--data_root","/home/dataset/cifar" ,
+//                 "--ckpt_path","/home/young/liuyixin/8.22/amc/checkpoints/mobilenetV1cifar10_origin_acc80.35_earlyStop.tar" ,
+//                 "--seed","2020",
+//                 "--data_bsize","32",
+//                 "--n_gpu","1",
+//                 "--warmup","50",
+//                 "--train_episode","400",
+//                 "--suffix","mobilenetv1_cifar10"
+//             ]
+//         }
+        
+//     ]
+// }
+
+
+// search mobilenetv1 on imagenet
 {
     // 使用 IntelliSense 了解相关属性。 
     // 悬停以查看现有属性的描述。
@@ -16,18 +54,18 @@
             "args":[
                 "--job","train",
                 "--model","mobilenet" ,
-                "--dataset","cifar10",
+                "--dataset","imagenet",
                 "--lbound","0.2" ,
                 "--rbound","1" ,
                 "--reward","acc_normalize" ,
-                "--data_root","C:\\Users\\lenovo\\dataset\\cifar" ,
-                "--ckpt_path","C:\\Users\\lenovo\\Desktop\\project\\CAMC\\CAMC-1\\checkpoints\\mobilenetV1cifar10_origin_acc80_earlyStop.tar" ,
+                "--data_root","/home/dataset/imagenet" ,
+                "--ckpt_path","/home/young/liuyixin/8.29/CAMC/checkpoints/mobilenetv1_imagenet.pth.tar" ,
                 "--seed","2020",
-                "--data_bsize","32",
+                "--data_bsize","5",
                 "--n_gpu","1",
                 "--warmup","50",
                 "--train_episode","400",
-                "--suffix","mobilenetv1_cifar10"
+                "--suffix","mobilenetv1_imagenet"
             ]
         }
         

@@ -81,9 +81,9 @@ def parse_args():
     parser.add_argument('--use_new_input', dest='use_new_input', action='store_true', help='use new input feature')
 
     # our_work
-    parser.add_argument('--preserve_ratio', default=0.5, type=float, help='preserve ratio of the model;limit:0.3,0.5,0.7')
-    parser.add_argument('--using_prembedding', default=False, type=bool, help='convenient for us to control the using of preserve_ratio feature')
+    # parser.add_argument('--preserve_ratio', default=0.5, type=float, help='preserve ratio of the model;limit:0.3,0.5,0.7')
     # parser.add_argument('--load_imagenet_pikle', default=False, type=bool, help='load imagenet dataset using the pre-load pikle file')
+    # parser.add_argument('--using_prembedding', default=False, type=bool, help='convenient for us to control the using of preserve_ratio feature')
 
     return parser.parse_args()
 
@@ -122,18 +122,17 @@ def get_model_and_checkpoint(model, dataset, checkpoint_path, n_gpu=1):
 
 
 def train(num_episode, agent, env, output):
+    env.set_output(output)
     agent.is_training = True
     step = episode = episode_steps = 0
     episode_reward = 0.
     observation = None
     T = []  # trajectory
     while episode < num_episode:  # counting based on episode
-        # 每个episode跑一个层
 
         # 初始时获取观察向量
         if observation is None:
-            observation = deepcopy(env.reset()) # 在env里加了随机换剪裁率
-            agent.reset(observation)
+            observation = deepcopy(env.reset()) 
 
         # agent pick action ...注：action为保留率
         if episode <= args.warmup:
@@ -143,14 +142,10 @@ def train(num_episode, agent, env, output):
             action = agent.select_action(observation, episode=episode)
 
         # env response with next_observation, reward, terminate_info
-        observation2, reward, done, info = env.step(action)
+        observation2, reward, done, info = env.step(action,episode)
         observation2 = deepcopy(observation2)
 
         T.append([reward, deepcopy(observation), deepcopy(observation2), action, done])
-
-        # fix-length, never reach here
-        # if max_episode_length and episode_steps >= max_episode_length - 1:
-        #     done = True
 
         # [optional] save intermideate model
         # if episode % int(num_episode / 3) == 0:
@@ -158,7 +153,8 @@ def train(num_episode, agent, env, output):
         # if episode % int(num_episode / 3) == 0:
 
         # agent 保存模型
-        agent.save_model(output)
+        if episode % 10 == 0:
+            agent.save_model(output)
 
         # update
         step += 1
@@ -169,53 +165,56 @@ def train(num_episode, agent, env, output):
         if done:  # end of episode
             
             
-            print('#{}: episode_reward:{:.4f} acc: {:.4f}, ratio: {:.4f},TargetRatio: {:.4f},done:{:.4f},strategy:{}'.format(episode, episode_reward,
-                                                                                 info['accuracy'],
+            print('#{}: episode_reward:{:.4f} acc: {:.4f},acc_:{:.4f}, ratio: {:.4f},TargetRatio: {:.4f},done:{:.4f},strategy:{}'.format(episode, episode_reward,
+                                                                                 info['accuracy'],info['accuracy_'],
                                                                                  info['compress_ratio'],env.preserve_ratio,info['compress_ratio']/env.preserve_ratio,info['strategy']))
-            text_writer.write(
-                '#{}: episode_reward:{:.4f} acc: {:.4f}, ratio: {:.4f},TargetRatio: {:.4f},done:{:.4f},strategy:{} \n'.format(episode, episode_reward,
-                                                                                 info['accuracy'],
-                                                                                 info['compress_ratio'],env.preserve_ratio,info['compress_ratio']/env.preserve_ratio,info['strategy']))
+            # text_writer.write(
+            #     '#Done: {}: episode_reward:{:.4f} acc: {:.4f},acc_:{:.4f}, ratio: {:.4f},TargetRatio: {:.4f},done:{:.4f},strategy:{} \n'.format(episode, episode_reward,
+            #                                                                      info['accuracy'],info['accuracy_'],
+            #                                                                      info['compress_ratio'],env.preserve_ratio,info['compress_ratio']/env.preserve_ratio,info['strategy']))
             final_reward = T[-1][0] # 最后的奖励
-            # final_reward = reward
-            # print('final_reward: {}'.format(final_reward))
 
             # agent observe and update policy
             for r_t, s_t, s_t1, a_t, done in T:
                 agent.observe(final_reward, s_t, s_t1, a_t, done) # 积累经验
-                # 竟然一轮里面的所有步的Reward都是finalreward，这个合不合理呢？
                 if episode > args.warmup:
                     agent.update_policy()
 
-            # agent.memory.append(
-            #    observation,
-            #    agent.select_action(observation, episode=episode),
-            #    0., False
-            # )
 
-            # reset
-            # 挑选新一轮训练的剪裁率
+            # our random number
+            nb = int((env.preserve_ratio-0.3)/0.2)
+            preserve_rate = env.preserve_ratio
+
+            
+            tfwriter.add_scalar('target_ratio/now',env.preserve_ratio)
+            tfwriter.add_scalar('reward/lastward_{}'.format(preserve_rate), final_reward, episode)
+            tfwriter.add_scalar('reward/best_{}'.format(preserve_rate), env.best_reward[nb], episode)
+            tfwriter.add_scalar('info/accuracy_{}'.format(preserve_rate), info['accuracy'], episode)
+            tfwriter.add_scalar('info/compress_ratio_{}'.format(preserve_rate), info['compress_ratio'], episode)
+            tfwriter.add_text('info/best_policy_{}'.format(preserve_rate), str(env.best_strategy), episode)
+
+            # record the preserve rate for each layer
+            for i, preserve_rate in enumerate(env.strategy):
+                tfwriter.add_scalar('preserve_rate/{}'.format(i), preserve_rate, episode)
+
+            # text_writer.write('==========================\n'))
+            # text_writer.write('target:{}\n'.format(preserve_rate))
+            # text_writer.write('best reward: {}\n'.format(env.best_reward[nb]))
+            # text_writer.write('best policy: {}\n'.format(env.best_strategy))
+            # text_writer.write('==========================\n'))
+
+            # 这是我们的主要改动，挑选新一轮训练的剪裁率
             env.change()
+
+            # 重置
             observation = None
             episode_steps = 0
             episode_reward = 0.
             episode += 1
             T = []
 
-            tfwriter.add_scalar('target_ratio/now',env.preserve_ratio )
-            tfwriter.add_scalar('reward/last', final_reward, episode)
-            tfwriter.add_scalar('reward/best', env.best_reward[int((env.preserve_ratio-0.3)/0.2)], episode)
-            tfwriter.add_scalar('info/accuracy', info['accuracy'], episode)
-            tfwriter.add_scalar('info/compress_ratio', info['compress_ratio'], episode)
-            tfwriter.add_text('info/best_policy', str(env.best_strategy), episode)
-
-            # record the preserve rate for each layer
-            for i, preserve_rate in enumerate(env.strategy):
-                tfwriter.add_scalar('preserve_rate/{}'.format(i), preserve_rate, episode)
-
-            text_writer.write('best reward: {}\n'.format(env.best_reward[int((env.preserve_ratio-0.3)/0.2)]))
-            text_writer.write('best policy: {}\n'.format(env.best_strategy))
-    text_writer.close()
+    # text_writer.close()
+    env.finish()
 
 
 def export_model(env, args):
@@ -258,7 +257,6 @@ if __name__ == "__main__":
 
     # 通道剪裁环境
     env = ChannelPruningEnv(model, checkpoint, args.dataset,
-                            preserve_ratio=1. if args.job == 'export' else args.preserve_ratio,
                             n_data_worker=args.n_worker, batch_size=args.data_bsize,
                             args=args, export_model=args.job == 'export', use_new_input=args.use_new_input)
 
@@ -270,7 +268,7 @@ if __name__ == "__main__":
         args.output = get_output_folder(args.output, base_folder_name)
         print('=> Saving logs to {}'.format(args.output))
         tfwriter = SummaryWriter(logdir=args.output)
-        text_writer = open(os.path.join(args.output, 'log.txt'), 'w')
+        # text_writer = open(os.path.join(args.output, 'log.txt'), 'a+')
         print('=> Output path: {}...'.format(args.output))
 
         # 获取状态和动作的数目
