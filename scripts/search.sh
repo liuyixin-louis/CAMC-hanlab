@@ -1,0 +1,17 @@
+python main/search.py.py \
+    --job=train \
+    --model=mobilenet \
+    --dataset=cifar10 \
+    --lbound=0.2 \
+    --rbound=1 \
+    --reward=acc_normalize \
+    --data_root=C:\\Users\\lenovo\\dataset\\cifar \
+    --ckpt_path=C:\\Users\\lenovo\\Desktop\\project\\CAMC\\CAMC-1\\checkpoints\\mobilenetV1cifar10_origin_acc80_earlyStop.tar \
+    --seed=2020 \
+    --warmup=10 \
+    --train_episode=80 \
+    --using_prembedding=True \
+    --data_bsize=10 \
+    --suffix=0829test \
+    --n_gpu=1 \
+    --rmsize=100
