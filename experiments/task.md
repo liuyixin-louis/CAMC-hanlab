@@ -49,6 +49,17 @@ python /home/young/liuyixin/8.29/CAMC/train_ddpg.py --job train --model mobilene
 
 - result:   http://222.201.187.249:6006/
 
+![image-20200830141444513](https://i.loli.net/2020/08/30/tTv6SLXcmaWIgRl.png)
+
+![image-20200830142657276](https://i.loli.net/2020/08/30/92n6sMquvePgz4J.png)
+
+- otherTry with argment modified
+
+```shell
+python /home/young/liuyixin/8.29/CAMC/train_ddpg.py --job train --model mobilenet --dataset imagenet --lbound 0.2 --rbound 1 --reward acc_normalize --data_root /home/dataset/imagenet --ckpt_path /home/young/liuyixin/8.29/CAMC/checkpoints/mobilenetv1_imagenet.pth.tar --seed 2020 --data_bsize 64 --n_gpu 1 --warmup 100 --train_episode 400 --suffix mobilenetV1_imagenet_trainDDPG_100warmup300train
+```
+
+
 
 #### 1.2 On Cifar10 DataSet
 
@@ -58,24 +69,43 @@ python /home/young/liuyixin/8.29/CAMC/train_ddpg.py --job train --model mobilene
 ```
 
 
+
+
+
 ## Thinking Why
 
-1. Will our training convergent with other acc_reward function?
+1. Will our training convergent with other **acc_reward** function? What is the **advantages** of our designed rewardfunction?
 
-- acc_reward: acc * 0.01
+> Example: Compare to acc_reward=acc * 0.01 . (Using **MobilenetV1** on **Imagenet** DataSet, same hyper-parameter)
 
 ```shell
 python /home/young/liuyixin/8.29/CAMC/train_ddpg.py --job train --model mobilenet --dataset imagenet --lbound 0.2 --rbound 1 --reward acc_reward --data_root /home/dataset/imagenet --ckpt_path /home/young/liuyixin/8.29/CAMC/checkpoints/mobilenetv1_imagenet.pth.tar --seed 2020 --data_bsize 64 --n_gpu 1 --warmup 300 --train_episode 800 --suffix mobilenetV1_imagenet_trainDDPG_acc_reward --acc_metric acc5
 ```
 
-2. Can we use the specific ddpg agent that has been trained ?
+- result:
+
+![image-20200830142257181](https://i.loli.net/2020/08/30/AumyHPaVhBxl53C.png)
+
+![image-20200830142725494](https://i.loli.net/2020/08/30/laEFNJRX3Bbs9Ie.png)
+
+- Phenomenon(Compared to our result)
+  - the curve of acc5 and reward with 0.3 prun_ratio is obviously steeper than ours
+  - Our best-reward curve reaches the highest peak earlier
+- Analyse
+  - 
+- Conlusion
+  - Our degsined reward function help with Accelerated training process of DDPG while pruning
+
+
+
+2. Can we directly reuse the trained ddpg agent?
 
 - script
 ```shell
 python /home/young/liuyixin/8.29/CAMC/resue_ddpg.py --job reuseDDPG_test --model mobilenet --dataset imagenet --lbound 0.2 --rbound 1 --reward acc_normalize --data_root /home/dataset/imagenet --ckpt_path /home/young/liuyixin/8.29/CAMC/checkpoints/mobilenetv1_imagenet.pth.tar --resume_ddpg_checkpoint /home/young/liuyixin/8.29/CAMC/logs/mobilenet_imagenet_search_mobilenetV1_imagenet_trainDDPG-run22 --seed 2020 --data_bsize 64 --n_gpu 1 --test_episode 10 --suffix mobilenetV1_imagenet_testRuseDDPG
 ```
 
-Something Strange:
+- Phenomenon：
 
 ```
 ============TargetRatio:0.3============
@@ -100,4 +130,7 @@ New best d primes: [3, 32, 56, 112, 112, 216, 216, 432, 424, 424, 416, 416, 408,
 ========================================
 ```
 
-
+- Analyse
+  - 
+- Conlusion
+  - Our degsined reward function help with Accelerated training process of DDPG while pruning
