@@ -148,17 +148,8 @@ def test(num_episode, agent, env, output):
                                                                                  info['compress_ratio'],env.preserve_ratio,info['compress_ratio']/env.preserve_ratio,info['strategy']))
             final_reward = T[-1][0] # 最后的奖励
 
-
-            # our agent don't need to be trained
-            # agent observe and update policy
-            # for r_t, s_t, s_t1, a_t, done in T:
-            #     agent.observe(final_reward, s_t, s_t1, a_t, done) # 积累经验
-            #     if episode > args.warmup:
-            #         agent.update_policy()
-
-
             # our random number
-            nb = int((env.preserve_ratio-0.3)/0.2)
+            nb = [0.3,0.5,0.7].index(env.preserve_ratio)
             preserve_rate = env.preserve_ratio
 
             
@@ -168,10 +159,10 @@ def test(num_episode, agent, env, output):
             tfwriter.add_scalar('info/accuracy_{}'.format(preserve_rate), info['accuracy'], episode)
             tfwriter.add_scalar('info/other_accuracy_{}'.format(preserve_rate), info['accuracy_'], episode)
             tfwriter.add_scalar('info/compress_ratio_{}'.format(preserve_rate), info['compress_ratio'], episode)
-            tfwriter.add_text('info/best_policy_{}'.format(preserve_rate), str(env.best_strategy), episode)
+            tfwriter.add_text('info/best_policy_{}'.format(preserve_rate), str(env.best_strategy[env.curr_prunRatio_index]), episode)
 
             # record the preserve rate for each layer
-            for i, preserve_rate in enumerate(env.strategy):
+            for i, preserve_rate in enumerate(env.strategy[env.curr_prunRatio_index]):
                 tfwriter.add_scalar('preserve_rate/{}'.format(i), preserve_rate, episode)
 
             # change the env preserve ratio

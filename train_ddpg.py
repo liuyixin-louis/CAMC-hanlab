@@ -80,11 +80,6 @@ def parse_args():
     parser.add_argument('--export_path', default=None, type=str, help='path for exporting models')
     # parser.add_argument('--use_new_input', dest='use_new_input', action='store_true', help='use new input feature')
 
-    # our_work
-    # parser.add_argument('--preserve_ratio', default=0.5, type=float, help='preserve ratio of the model;limit:0.3,0.5,0.7')
-    # parser.add_argument('--load_imagenet_pikle', default=False, type=bool, help='load imagenet dataset using the pre-load pikle file')
-    # parser.add_argument('--using_prembedding', default=False, type=bool, help='convenient for us to control the using of preserve_ratio feature')
-
     return parser.parse_args()
 
 
@@ -147,11 +142,6 @@ def train(num_episode, agent, env, output):
 
         T.append([reward, deepcopy(observation), deepcopy(observation2), action, done])
 
-        # [optional] save intermideate model
-        # if episode % int(num_episode / 3) == 0:
-        #     agent.save_model(output)
-        # if episode % int(num_episode / 3) == 0:
-
         # agent 保存模型
         if episode % 10 == 0:
             agent.save_model(output)
@@ -168,10 +158,7 @@ def train(num_episode, agent, env, output):
             print('#{}: episode_reward:{:.4f} acc: {:.4f},acc_:{:.4f}, ratio: {:.4f},TargetRatio: {:.4f},done:{:.4f},strategy:{}'.format(episode, episode_reward,
                                                                                  info['accuracy'],info['accuracy_'],
                                                                                  info['compress_ratio'],env.preserve_ratio,info['compress_ratio']/env.preserve_ratio,info['strategy']))
-            # text_writer.write(
-            #     '#Done: {}: episode_reward:{:.4f} acc: {:.4f},acc_:{:.4f}, ratio: {:.4f},TargetRatio: {:.4f},done:{:.4f},strategy:{} \n'.format(episode, episode_reward,
-            #                                                                      info['accuracy'],info['accuracy_'],
-            #                                                                      info['compress_ratio'],env.preserve_ratio,info['compress_ratio']/env.preserve_ratio,info['strategy']))
+            
             final_reward = T[-1][0] # 最后的奖励
 
             # agent observe and update policy
@@ -182,27 +169,19 @@ def train(num_episode, agent, env, output):
 
 
             # our random number
-            nb = int((env.preserve_ratio-0.3)/0.2)
+            nb = [0.3,0.5,0.7].index(env.preserve_ratio)
             preserve_rate = env.preserve_ratio
-
-            
             tfwriter.add_scalar('target_ratio/now',env.preserve_ratio)
             tfwriter.add_scalar('reward/lastward_{}'.format(preserve_rate), final_reward, episode)
             tfwriter.add_scalar('reward/best_{}'.format(preserve_rate), env.best_reward[nb], episode)
             tfwriter.add_scalar('info/accuracy_{}'.format(preserve_rate), info['accuracy'], episode)
             tfwriter.add_scalar('info/other_accuracy_{}'.format(preserve_rate), info['accuracy_'], episode)
             tfwriter.add_scalar('info/compress_ratio_{}'.format(preserve_rate), info['compress_ratio'], episode)
-            tfwriter.add_text('info/best_policy_{}'.format(preserve_rate), str(env.best_strategy), episode)
+            tfwriter.add_text('info/best_policy_{}'.format(preserve_rate), str(env.best_strategy[env.curr_prunRatio_index]), episode)
 
             # record the preserve rate for each layer
-            for i, preserve_rate in enumerate(env.strategy):
+            for i, preserve_rate in enumerate(env.strategy[env.curr_prunRatio_index]):
                 tfwriter.add_scalar('preserve_rate/{}'.format(i), preserve_rate, episode)
-
-            # text_writer.write('==========================\n'))
-            # text_writer.write('target:{}\n'.format(preserve_rate))
-            # text_writer.write('best reward: {}\n'.format(env.best_reward[nb]))
-            # text_writer.write('best policy: {}\n'.format(env.best_strategy))
-            # text_writer.write('==========================\n'))
 
             # 这是我们的主要改动，挑选新一轮训练的剪裁率
             env.change()
@@ -278,9 +257,6 @@ if __name__ == "__main__":
 
         # 实例化一个agent
         agent = DDPG(nb_states, nb_actions, args)
-
-        # 加载权重数据
-        # agent.load_weights('/home/young/liuyixin/local/amc_code_StateEbem/logs/mobilenet_imagenet_search_stateEmbe_acc_normalize_savemodel-run48')
 
         # 训练
         train(args.train_episode, agent, env, args.output)

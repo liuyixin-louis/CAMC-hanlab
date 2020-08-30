@@ -82,7 +82,8 @@ class ChannelPruningEnv:
         self.reward = eval(args.reward)
 
         self.best_reward = [-math.inf,-math.inf,-math.inf]
-        self.best_strategy = None
+        self.best_strategy = [[],[],[]]
+
         self.best_d_prime_list = None
 
         self.org_w_size = sum(self.wsize_list)
@@ -127,7 +128,7 @@ class ChannelPruningEnv:
             print('# Pruning {}: ratio: {}, d_prime: {}'.format(self.cur_ind, action, d_prime))
 
 
-        self.strategy.append(action)  # save action to strategy；这一层的保留率加进去
+        self.strategy[self.curr_prunRatio_index].append(action)  # save action to strategy；这一层的保留率加进去
         self.d_prime_list.append(d_prime)
 
         self.strategy_dict[self.prunable_idx[self.cur_ind]][0] = action 
@@ -137,14 +138,14 @@ class ChannelPruningEnv:
         # all the actions are made
         if self._is_final_layer():
             # 这是最后一层了
-            assert len(self.strategy) == len(self.prunable_idx)
+            assert len(self.strategy[self.curr_prunRatio_index]) == len(self.prunable_idx)
             current_flops = self._cur_flops()
             acc_t1 = time.time()
             acc,acc_ = self._validate(self.val_loader, self.model) # 验证
             acc_t2 = time.time()
             self.val_time = acc_t2 - acc_t1
             compress_ratio = current_flops * 1. / self.org_flops
-            info_set = {'compress_ratio': compress_ratio, 'accuracy': acc, 'strategy': self.strategy.copy(),"accuracy_":acc_}
+            info_set = {'compress_ratio': compress_ratio, 'accuracy': acc, 'strategy': self.strategy[self.curr_prunRatio_index].copy(),"accuracy_":acc_}
             
             # 修改：接口变动
             reward = self.reward(self, acc, current_flops,self.preserve_ratio,compress_ratio)
@@ -156,11 +157,11 @@ class ChannelPruningEnv:
                 import os 
                 
                 self.best_reward[loc] = reward
-                self.best_strategy = self.strategy.copy()
+                self.best_strategy[self.curr_prunRatio_index] = self.strategy[self.curr_prunRatio_index].copy()
                 self.best_d_prime_list = self.d_prime_list.copy()
                 prGreen('===Target:{}==='.format(self.preserve_ratio))
                 prGreen('New best reward: {:.4f}, acc: {:.4f},acc_:{:.4f} compress: {:.4f},target ratio:{:.4f}'.format(reward, acc,acc_, compress_ratio,self.preserve_ratio))
-                prGreen('New best policy: {}'.format(self.best_strategy))
+                prGreen('New best policy: {}'.format(self.best_strategy[self.curr_prunRatio_index]))
                 prGreen('New best d primes: {}'.format(self.best_d_prime_list))
                 
 
@@ -174,7 +175,7 @@ class ChannelPruningEnv:
                 
                     text_writer.write('New best reward: {:.4f}, acc: {:.4f},acc_:{:.4f} compress: {:.4f},target ratio:{:.4f}\n' \
                     .format(reward, acc,acc_, compress_ratio,self.preserve_ratio))
-                    text_writer.write('New best policy: {}\n'.format(self.best_strategy))
+                    text_writer.write('New best policy: {}\n'.format(self.best_strategy[self.curr_prunRatio_index]))
                     text_writer.write('New best d primes: {}\n'.format(self.best_d_prime_list))
                     text_writer.write('========================================\n')
 
@@ -199,7 +200,7 @@ class ChannelPruningEnv:
         # 其他的已经被加过了
         self.layer_embedding[self.cur_ind][-3] = self._cur_reduced() * 1. / self.org_flops  # reduced
         self.layer_embedding[self.cur_ind][-2] = sum(self.flops_list[self.cur_ind + 1:]) * 1. / self.org_flops  # rest
-        self.layer_embedding[self.cur_ind][-1] = self.strategy[-1]  # last action
+        self.layer_embedding[self.cur_ind][-1] = self.strategy[self.curr_prunRatio_index][-1]  # last action
         obs = self.layer_embedding[self.cur_ind, :].copy()
         return obs, reward, done, info_set
 
@@ -208,7 +209,7 @@ class ChannelPruningEnv:
         # restore env by loading the checkpoint
         self.model.load_state_dict(self.checkpoint)
         self.cur_ind = 0 
-        self.strategy = []  
+        self.strategy = [[],[],[]]  
         self.d_prime_list = []
         self.strategy_dict = copy.deepcopy(self.min_strategy_dict) 
 
@@ -336,7 +337,7 @@ class ChannelPruningEnv:
 
     def _action_wall(self, action):
         """根据论文中的算法，action进行一定的截断"""
-        assert len(self.strategy) == self.cur_ind # 
+        assert len(self.strategy[self.curr_prunRatio_index]) == self.cur_ind # 
 
         action = float(action)
         action = np.clip(action, 0, 1) # 01截断
