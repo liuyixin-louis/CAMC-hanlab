@@ -16,9 +16,14 @@ class ChannelPruningEnv:
     Env for channel pruning search；
     """
     def __init__(self, model, checkpoint, data, args, n_data_worker=4,
-                 batch_size=256, export_model=False, use_new_input=False):
+                 batch_size=256, export_model=False):
+
+        # support pruning_ratio (discrete)
+        self.support_prun_ratio = [0.3,0.5,0.7]
+        self.curr_prunRatio_index = 0
+        self.preserve_ratio = 0.3 # we will start from 0.3
+
         # default setting
-        # 
         self.prunable_layer_types = [torch.nn.modules.conv.Conv2d, torch.nn.modules.linear.Linear] # CNN和线性层
 
         # save options
@@ -26,14 +31,14 @@ class ChannelPruningEnv:
         self.checkpoint = checkpoint
         self.n_data_worker = n_data_worker
         self.batch_size = batch_size
-        self.data_type = data # 采用的数据集，是个字符串
+        self.data_type = data # 采用的数据集
 
 
         # options from args
         self.args = args
         self.lbound = args.lbound
         self.rbound = args.rbound
-        self.preserve_ratio = 0.7 # we will start from 0.7
+        
 
         
         self.use_real_val = args.use_real_val # 是否采用验证集
@@ -45,7 +50,6 @@ class ChannelPruningEnv:
         self.data_root = args.data_root
 
         self.export_model = export_model    # bool
-        self.use_new_input = use_new_input
 
         # prepare data
         self._init_data()
@@ -147,7 +151,7 @@ class ChannelPruningEnv:
 
 
 
-            loc = int((self.preserve_ratio-0.3)/0.2)
+            loc = self.curr_prunRatio_index
             if reward > self.best_reward[loc]:
                 import os 
                 
@@ -253,8 +257,6 @@ class ChannelPruningEnv:
 
         extract_t1 = time.time()
 
-        if self.use_new_input:  # this is slow and may lead to overfitting
-            self._regenerate_input_feature()
         
         X = self.layer_info_dict[op_idx]['input_feat']  # input after pruning of previous ops
         Y = self.layer_info_dict[op_idx]['output_feat']  # fixed output from original model
@@ -292,7 +294,7 @@ class ChannelPruningEnv:
             rec_weight = np.transpose(rec_weight, (0, 3, 1, 2))  # (C_out, C_in', K_h, K_w)
         else:
             raise NotImplementedError('Current code only supports 1x1 conv now!')
-        if not self.export_model:  # pad, pseudo compress 垫子？
+        if not self.export_model:  
             rec_weight_pad = np.zeros_like(weight)
             rec_weight_pad[:, mask, :, :] = rec_weight
             rec_weight = rec_weight_pad
@@ -408,11 +410,6 @@ class ChannelPruningEnv:
                                                                         shuffle=False)  # same sampling
         
 
-        # if self.args.load_imagenet_pikle is False:
-            
-        # else:
-        #     # TODO
-            # pass
         if self.use_real_val:  # use the real val set for eval, which is actually wrong
             print('*** USE REAL VALIDATION SET!')
 
@@ -497,7 +494,7 @@ class ChannelPruningEnv:
                 return y
             return lambda_forward
 
-        # ??这是啥，换forward函数
+        # 这是啥，换forward函数
         for idx in self.prunable_idx + self.buffer_idx:  # get all
             m = m_list[idx]
             m.old_forward = m.forward
@@ -623,9 +620,8 @@ class ChannelPruningEnv:
                 this_state.append(1)  # kernel size
                 this_state.append(np.prod(m.weight.size()))  # weight size
 
-            n = int((self.preserve_ratio - 0.3 )/0.2)
-            discrete_status = [0,0,0]
-            discrete_status[n] = 1
+            discrete_status = [0]*len(self.support_prun_ratio)
+            discrete_status[self.curr_prunRatio_index] = 1
             this_state+=discrete_status
 
             # this 3 features need to be changed later
@@ -648,13 +644,12 @@ class ChannelPruningEnv:
         self.layer_embedding = layer_embedding
 
     def change(self):
-        # if self.args.using_prembedding:
         # 采样本轮剪裁率
-        self.layer_embedding[:, -6:-3] = 0 # 重置，debug
-        n = np.random.choice(3)
-        self.preserve_ratio = n*0.2+0.3
+        self.curr_prunRatio_index = (self.curr_prunRatio_index+1)%len(self.support_prun_ratio)
+        self.preserve_ratio = self.support_prun_ratio[self.curr_prunRatio_index]
+        self.layer_embedding[:, -6:-len(self.support_prun_ratio)] = 0 # 重置，debug
+        self.layer_embedding[:,-6+self.curr_prunRatio_index] = 1 # 更新one-hot向量
         self.expected_preserve_computation = self.preserve_ratio * sum(self.flops_list)
-        self.layer_embedding[:,-6+n] = 1 # 更新状态向量
 
     def _validate(self, val_loader, model, verbose=False):
         '''
@@ -704,5 +699,3 @@ class ChannelPruningEnv:
             return (top5.avg,top1.avg)
         else:
             raise NotImplementedError
-    # def finish(self):
-    #     self.text_writer.close()

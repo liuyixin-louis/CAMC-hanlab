@@ -18,8 +18,6 @@ from lib.data import get_dataset
 from lib.net_measure import measure_model
 
 from lib.utils import EarlyStopping
-# early stopping patience; how long to wait after last time validation loss improved.
-patience = 5
 
 
 
@@ -40,18 +38,10 @@ def parse_args():
     parser.add_argument('--ckpt_path', default=None, type=str, help='checkpoint path to resume from')
     # run eval
     parser.add_argument('--eval', action='store_true', help='Simply run eval')
+    parser.add_argument('--patience', default=5, type=int, help='early stopping patience; how long to wait after last time validation loss improved.')
 
     return parser.parse_args()
 
-
-# def _create_cifar10_model(arch, pretrained):
-#     if pretrained:
-#         raise ValueError("Model {} (CIFAR10) does not have a pretrained model".format(arch))
-#     try:
-#         model = cifar10_models.__dict__[arch]()
-#     except KeyError:
-#         raise ValueError("Model {} is not supported for dataset CIFAR10".format(arch))
-#     return model
 
 
 # def _create_mnist_model(arch, pretrained):
@@ -110,7 +100,6 @@ def get_model():
     dataset = args.dataset.lower()
     if dataset not in SUPPORTED_DATASETS:
         raise ValueError('Dataset {} is not supported'.format(dataset))
-
     net = None
     cadene = None
 

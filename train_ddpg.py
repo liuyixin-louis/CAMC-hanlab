@@ -52,7 +52,7 @@ def parse_args():
                         help='time without training but only filling the replay memory')
     parser.add_argument('--discount', default=1., type=float, help='')
     parser.add_argument('--bsize', default=64, type=int, help='minibatch size')
-    parser.add_argument('--rmsize', default=100, type=int, help='memory size for each layer')
+    parser.add_argument('--rmsize', default=300, type=int, help='memory size for each layer')
     parser.add_argument('--window_length', default=1, type=int, help='')
     parser.add_argument('--tau', default=0.01, type=float, help='moving average for target network')
     # noise (truncated normal distribution)
@@ -78,7 +78,7 @@ def parse_args():
     parser.add_argument('--ratios', default=None, type=str, help='ratios for pruning')
     parser.add_argument('--channels', default=None, type=str, help='channels after pruning')
     parser.add_argument('--export_path', default=None, type=str, help='path for exporting models')
-    parser.add_argument('--use_new_input', dest='use_new_input', action='store_true', help='use new input feature')
+    # parser.add_argument('--use_new_input', dest='use_new_input', action='store_true', help='use new input feature')
 
     # our_work
     # parser.add_argument('--preserve_ratio', default=0.5, type=float, help='preserve ratio of the model;limit:0.3,0.5,0.7')
@@ -214,9 +214,6 @@ def train(num_episode, agent, env, output):
             episode += 1
             T = []
 
-    # text_writer.close()
-    # env.finish()
-
 
 def export_model(env, args):
     assert args.ratios is not None or args.channels is not None, 'Please provide a valid ratio list or pruned channels'
@@ -259,7 +256,7 @@ if __name__ == "__main__":
     # 通道剪裁环境
     env = ChannelPruningEnv(model, checkpoint, args.dataset,
                             n_data_worker=args.n_worker, batch_size=args.data_bsize,
-                            args=args, export_model=args.job == 'export', use_new_input=args.use_new_input)
+                            args=args, export_model=args.job == 'export')
 
     if args.job == 'train':
         # build folder and logs
