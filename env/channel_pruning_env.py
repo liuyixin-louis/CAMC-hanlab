@@ -84,14 +84,14 @@ class ChannelPruningEnv:
         self.org_w_size = sum(self.wsize_list)
 
 
-        # log writer
-        self.text_writer = None
+        # log path
+        self.output = None
 
     def set_output(self,output):
         import os
         path = os.getcwd()
         path = path + output[1:]
-        self.text_writer = open(os.path.join(path, 'log.txt'), 'w+')
+        self.output = path+'/log.txt'
 
     def step(self, action,epoch):
         """根据输入的动作，对环境进行修改并返回环境的反馈信息"""
@@ -161,17 +161,18 @@ class ChannelPruningEnv:
                 
 
                 # write to txt log
-                self.text_writer.write('============TargetRatio:{}============\n'.format(self.preserve_ratio))
-                self.text_writer.write(
-                '#epoch: {}; acc: {:.4f},acc_:{:.4f};TargetRatio: {:.4f};DoneRatio: {:.4f};ArchivePercent:{:.4f};PrunStrategy:{} \n'.format(epoch,
-                                                                                 info_set['accuracy'],info_set['accuracy_'],
-                                                                                 self.preserve_ratio,info_set['compress_ratio'],info_set['compress_ratio']/self.preserve_ratio,info_set['strategy']))
-            
-                self.text_writer.write('New best reward: {:.4f}, acc: {:.4f},acc_:{:.4f} compress: {:.4f},target ratio:{:.4f}\n' \
-                .format(reward, acc,acc_, compress_ratio,self.preserve_ratio))
-                self.text_writer.write('New best policy: {}\n'.format(self.best_strategy))
-                self.text_writer.write('New best d primes: {}\n'.format(self.best_d_prime_list))
-                self.text_writer.write('================================')
+                with open(self.output, 'a') as text_writer:
+                    text_writer.write('\n============TargetRatio:{}============\n'.format(self.preserve_ratio))
+                    text_writer.write(
+                    '#epoch: {}; acc: {:.4f},acc_:{:.4f};TargetRatio: {:.4f};DoneRatio: {:.4f};ArchivePercent:{:.4f};PrunStrategy:{} \n'.format(epoch,
+                                                                                    info_set['accuracy'],info_set['accuracy_'],
+                                                                                    self.preserve_ratio,info_set['compress_ratio'],info_set['compress_ratio']/self.preserve_ratio,info_set['strategy']))
+                
+                    text_writer.write('New best reward: {:.4f}, acc: {:.4f},acc_:{:.4f} compress: {:.4f},target ratio:{:.4f}\n' \
+                    .format(reward, acc,acc_, compress_ratio,self.preserve_ratio))
+                    text_writer.write('New best policy: {}\n'.format(self.best_strategy))
+                    text_writer.write('New best d primes: {}\n'.format(self.best_d_prime_list))
+                    text_writer.write('========================================\n')
 
                 
                 
@@ -703,5 +704,5 @@ class ChannelPruningEnv:
             return (top5.avg,top1.avg)
         else:
             raise NotImplementedError
-    def finish():
-        self.text_writer.close()
+    # def finish(self):
+    #     self.text_writer.close()

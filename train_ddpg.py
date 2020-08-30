@@ -190,6 +190,7 @@ def train(num_episode, agent, env, output):
             tfwriter.add_scalar('reward/lastward_{}'.format(preserve_rate), final_reward, episode)
             tfwriter.add_scalar('reward/best_{}'.format(preserve_rate), env.best_reward[nb], episode)
             tfwriter.add_scalar('info/accuracy_{}'.format(preserve_rate), info['accuracy'], episode)
+            tfwriter.add_scalar('info/other_accuracy_{}'.format(preserve_rate), info['accuracy_'], episode)
             tfwriter.add_scalar('info/compress_ratio_{}'.format(preserve_rate), info['compress_ratio'], episode)
             tfwriter.add_text('info/best_policy_{}'.format(preserve_rate), str(env.best_strategy), episode)
 
@@ -214,7 +215,7 @@ def train(num_episode, agent, env, output):
             T = []
 
     # text_writer.close()
-    env.finish()
+    # env.finish()
 
 
 def export_model(env, args):

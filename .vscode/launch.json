@@ -63,8 +63,8 @@
                 "--seed","2020",
                 "--data_bsize","5",
                 "--n_gpu","1",
-                "--warmup","50",
-                "--train_episode","400",
+                "--warmup","3",
+                "--train_episode","3",
                 "--suffix","mobilenetv1_imagenet"
             ]
         }
