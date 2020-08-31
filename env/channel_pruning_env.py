@@ -411,8 +411,8 @@ class ChannelPruningEnv:
                                                                         shuffle=False)  # same sampling
         
 
-        if self.use_real_val:  # use the real val set for eval, which is actually wrong
-            print('*** USE REAL VALIDATION SET!')
+        # if self.use_real_val:  # use the real val set for eval, which is actually wrong
+        #     print('*** USE REAL VALIDATION SET!')
 
     def _build_index(self):
         """一些索引的构建"""
@@ -495,7 +495,7 @@ class ChannelPruningEnv:
                 return y
             return lambda_forward
 
-        # 这是啥，换forward函数
+        
         for idx in self.prunable_idx + self.buffer_idx:  # get all
             m = m_list[idx]
             m.old_forward = m.forward

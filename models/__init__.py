@@ -17,11 +17,8 @@
 """This package contains ImageNet and CIFAR image classification models for pytorch"""
 import os
 import sys
-
 base_path = os.path.dirname(os.path.abspath(__file__)) + '\\..\\'
-
 sys.path.append(base_path) #这里临时性的把项目目录加入到系统路径中
-
 import copy
 from functools import partial
 import torch
@@ -36,108 +33,7 @@ import pretrainedmodels
 
 # from distiller.utils import set_model_input_shape_attr, model_setattr
 # from distiller.modules import Mean, EltwiseAdd
-
-
-class Mean(nn.Module):
-    def __init__(self, *args, **kwargs):
-        super(Mean, self).__init__()
-        self.args = args
-        self.kwargs = kwargs
-
-    def forward(self, x: torch.Tensor):
-        return torch.mean(x, *self.args, **self.kwargs)
-
-
-class EltwiseAdd(nn.Module):
-    def __init__(self, inplace=False):
-        """Element-wise addition"""
-        super().__init__()
-        self.inplace = inplace
-
-    def forward(self, *input):
-        res = input[0]
-        if self.inplace:
-            for t in input[1:]:
-                res += t
-        else:
-            for t in input[1:]:
-                res = res + t
-        return res
-
-
-
-def set_model_input_shape_attr(model, dataset=None, input_shape=None):
-    """Sets an attribute named 'input_shape' within the model instance, specifying the expected input shape
-
-    Args:
-          model (nn.Module): Model instance
-          dataset (str): Name of dataset from which to infer input shape
-          input_shape (tuple): Tuple of integers representing the input shape. Can also be a tuple of tuples, allowing
-            arbitrarily complex collections of tensors. Used only if 'dataset' is None
-    """
-    if not hasattr(model, 'input_shape'):
-        model.input_shape = _validate_input_shape(dataset, input_shape)
-
-
-
-def _validate_input_shape(dataset, input_shape):
-    if dataset:
-        try:
-            return tuple(distiller.apputils.classification_get_input_shape(dataset))
-        except ValueError:
-            raise ValueError("Can't infer input shape for dataset {}, please pass shape directly".format(dataset))
-    else:
-        if input_shape is None:
-            raise ValueError('Must provide either dataset name or input shape')
-        if not isinstance(input_shape, tuple):
-            raise TypeError('Shape should be a tuple of integers, or a tuple of tuples of integers')
-
-        def val_recurse(in_shape):
-            if all(isinstance(x, int) for x in in_shape):
-                if any(x < 0 for x in in_shape):
-                    raise ValueError("Shape can't contain negative dimensions: {}".format(in_shape))
-                return in_shape
-            if all(isinstance(x, tuple) for x in in_shape):
-                return tuple(val_recurse(x) for x in in_shape)
-            raise TypeError('Shape should be a tuple of integers, or a tuple of tuples of integers')
-
-        return val_recurse(input_shape)
-
-
-def model_setattr(model, attr_name, val, register=False):
-    """
-    Sets attribute of a model, through the entire hierarchy.
-    Args:
-        model (nn.Module): the model.
-        attr_name (str): the attribute name as shown by model.named_<parameters/modules/buffers>()
-        val: the value of the attribute
-        register (bool): if True - register_buffer(val) if val is a torch.Tensor and
-          register_parameter(val) if it's an nn.Parameter.
-    """
-    def split_name(name):
-        if '.' in name:
-            return name.rsplit('.', 1)
-        else:
-            return '', name
-    modules_dict = OrderedDict(model.named_modules())
-    lowest_depth_container_name, lowest_depth_attr_name = split_name(attr_name)
-    while lowest_depth_container_name and lowest_depth_container_name not in modules_dict:
-        container_name, attr = split_name(lowest_depth_container_name)
-        lowest_depth_container_name = container_name
-        lowest_depth_attr_name = '%s%s' % (attr, lowest_depth_attr_name)
-    lowest_depth_container = modules_dict[lowest_depth_container_name]  # type: nn.Module
-
-    if register and torch.is_tensor(val):
-        if isinstance(val, nn.Parameter):
-            lowest_depth_container.register_parameter(lowest_depth_attr_name, val)
-        else:
-            lowest_depth_container.register_buffer(lowest_depth_attr_name, val)
-    else:
-        setattr(lowest_depth_container, lowest_depth_attr_name, val)
-
 from collections import OrderedDict
-
-
 import logging
 msglogger = logging.getLogger()
 
@@ -170,45 +66,8 @@ MNIST_MODEL_NAMES = sorted(name for name in mnist_models.__dict__
 ALL_MODEL_NAMES = sorted(map(lambda s: s.lower(),
                             set(IMAGENET_MODEL_NAMES + CIFAR10_MODEL_NAMES + MNIST_MODEL_NAMES)))
 
-
-def patch_torchvision_mobilenet_v2(model):
-    """
-    Patches TorchVision's MobileNetV2:
-    * To allow quantization, this adds modules for tensor operations (mean, element-wise addition) to the
-      model instance and patches the forward functions accordingly
-    * Fixes a bug in the torchvision implementation that prevents export to ONNX (and creation of SummaryGraph)
-    """
-    if not isinstance(model, torch_models.MobileNetV2):
-        raise TypeError("Only MobileNetV2 is acceptable.")
-
-    def patched_forward_mobilenet_v2(self, x):
-        x = self.features(x)
-        # x = x.mean([2, 3]) # this was a bug: https://github.com/pytorch/pytorch/issues/20516
-        x = self.mean32(x)
-        x = self.classifier(x)
-        return x
-    model.mean32 = nn.Sequential(
-        Mean(3), Mean(2)
-    )
-    model.__class__.forward = patched_forward_mobilenet_v2
-
-    def is_inverted_residual(module):
-        return isinstance(module, nn.Module) and module.__class__.__name__ == 'InvertedResidual'
-
-    def patched_forward_invertedresidual(self, x):
-        if self.use_res_connect:
-            return self.residual_eltwiseadd(self.conv(x), x)
-        else:
-            return self.conv(x)
-
-    for n, m in model.named_modules():
-        if is_inverted_residual(m):
-            if m.use_res_connect:
-                m.residual_eltwiseadd = EltwiseAdd()
-            m.__class__.forward = patched_forward_invertedresidual
-
-
 _model_extensions = {}
+
 
 
 def create_model(pretrained, dataset, arch, parallel=True, device_ids=None):
@@ -263,6 +122,142 @@ def create_model(pretrained, dataset, arch, parallel=True, device_ids=None):
     model.arch = arch
     model.dataset = dataset
     return model.to(device)
+
+
+class Mean(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super(Mean, self).__init__()
+        self.args = args
+        self.kwargs = kwargs
+
+    def forward(self, x: torch.Tensor):
+        return torch.mean(x, *self.args, **self.kwargs)
+
+
+class EltwiseAdd(nn.Module):
+    def __init__(self, inplace=False):
+        """Element-wise addition"""
+        super().__init__()
+        self.inplace = inplace
+
+    def forward(self, *input):
+        res = input[0]
+        if self.inplace:
+            for t in input[1:]:
+                res += t
+        else:
+            for t in input[1:]:
+                res = res + t
+        return res
+
+
+
+# def set_model_input_shape_attr(model, dataset=None, input_shape=None):
+#     """Sets an attribute named 'input_shape' within the model instance, specifying the expected input shape
+
+#     Args:
+#           model (nn.Module): Model instance
+#           dataset (str): Name of dataset from which to infer input shape
+#           input_shape (tuple): Tuple of integers representing the input shape. Can also be a tuple of tuples, allowing
+#             arbitrarily complex collections of tensors. Used only if 'dataset' is None
+#     """
+#     if not hasattr(model, 'input_shape'):
+#         model.input_shape = _validate_input_shape(dataset, input_shape)
+
+
+
+# def _validate_input_shape(dataset, input_shape):
+#     if dataset:
+#         try:
+#             return tuple(distiller.apputils.classification_get_input_shape(dataset))
+#         except ValueError:
+#             raise ValueError("Can't infer input shape for dataset {}, please pass shape directly".format(dataset))
+#     else:
+#         if input_shape is None:
+#             raise ValueError('Must provide either dataset name or input shape')
+#         if not isinstance(input_shape, tuple):
+#             raise TypeError('Shape should be a tuple of integers, or a tuple of tuples of integers')
+
+#         def val_recurse(in_shape):
+#             if all(isinstance(x, int) for x in in_shape):
+#                 if any(x < 0 for x in in_shape):
+#                     raise ValueError("Shape can't contain negative dimensions: {}".format(in_shape))
+#                 return in_shape
+#             if all(isinstance(x, tuple) for x in in_shape):
+#                 return tuple(val_recurse(x) for x in in_shape)
+#             raise TypeError('Shape should be a tuple of integers, or a tuple of tuples of integers')
+
+#         return val_recurse(input_shape)
+
+
+# def model_setattr(model, attr_name, val, register=False):
+#     """
+#     Sets attribute of a model, through the entire hierarchy.
+#     Args:
+#         model (nn.Module): the model.
+#         attr_name (str): the attribute name as shown by model.named_<parameters/modules/buffers>()
+#         val: the value of the attribute
+#         register (bool): if True - register_buffer(val) if val is a torch.Tensor and
+#           register_parameter(val) if it's an nn.Parameter.
+#     """
+#     def split_name(name):
+#         if '.' in name:
+#             return name.rsplit('.', 1)
+#         else:
+#             return '', name
+#     modules_dict = OrderedDict(model.named_modules())
+#     lowest_depth_container_name, lowest_depth_attr_name = split_name(attr_name)
+#     while lowest_depth_container_name and lowest_depth_container_name not in modules_dict:
+#         container_name, attr = split_name(lowest_depth_container_name)
+#         lowest_depth_container_name = container_name
+#         lowest_depth_attr_name = '%s%s' % (attr, lowest_depth_attr_name)
+#     lowest_depth_container = modules_dict[lowest_depth_container_name]  # type: nn.Module
+
+#     if register and torch.is_tensor(val):
+#         if isinstance(val, nn.Parameter):
+#             lowest_depth_container.register_parameter(lowest_depth_attr_name, val)
+#         else:
+#             lowest_depth_container.register_buffer(lowest_depth_attr_name, val)
+#     else:
+#         setattr(lowest_depth_container, lowest_depth_attr_name, val)
+
+
+
+def patch_torchvision_mobilenet_v2(model):
+    """
+    Patches TorchVision's MobileNetV2:
+    * To allow quantization, this adds modules for tensor operations (mean, element-wise addition) to the
+      model instance and patches the forward functions accordingly
+    * Fixes a bug in the torchvision implementation that prevents export to ONNX (and creation of SummaryGraph)
+    """
+    if not isinstance(model, torch_models.MobileNetV2):
+        raise TypeError("Only MobileNetV2 is acceptable.")
+
+    def patched_forward_mobilenet_v2(self, x):
+        x = self.features(x)
+        # x = x.mean([2, 3]) # this was a bug: https://github.com/pytorch/pytorch/issues/20516
+        x = self.mean32(x)
+        x = self.classifier(x)
+        return x
+    model.mean32 = nn.Sequential(
+        Mean(3), Mean(2)
+    )
+    model.__class__.forward = patched_forward_mobilenet_v2
+
+    def is_inverted_residual(module):
+        return isinstance(module, nn.Module) and module.__class__.__name__ == 'InvertedResidual'
+
+    def patched_forward_invertedresidual(self, x):
+        if self.use_res_connect:
+            return self.residual_eltwiseadd(self.conv(x), x)
+        else:
+            return self.conv(x)
+
+    for n, m in model.named_modules():
+        if is_inverted_residual(m):
+            if m.use_res_connect:
+                m.residual_eltwiseadd = EltwiseAdd()
+            m.__class__.forward = patched_forward_invertedresidual
 
 
 def is_inception(arch):

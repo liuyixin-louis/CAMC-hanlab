@@ -3,8 +3,6 @@
 # {jilin, songhan}@mit.edu
 
 import os 
-# os.environ["CUDA_VISIBLE_DEVICES"] = '0,1,2,3'
-
 import torch
 import numpy as np
 import argparse
@@ -14,9 +12,10 @@ torch.backends.cudnn.deterministic = True
 from env.channel_pruning_env import ChannelPruningEnv
 from lib.agent import DDPG
 from lib.utils import get_output_folder
-
 from tensorboardX import SummaryWriter
 
+
+# torch.cuda.set_device(2)
 
 def parse_args():
     parser = argparse.ArgumentParser(description='AMC search script')
@@ -52,7 +51,7 @@ def parse_args():
                         help='time without training but only filling the replay memory')
     parser.add_argument('--discount', default=1., type=float, help='')
     parser.add_argument('--bsize', default=64, type=int, help='minibatch size')
-    parser.add_argument('--rmsize', default=300, type=int, help='memory size for each layer')
+    parser.add_argument('--rmsize', default=100, type=int, help='memory size for each layer')
     parser.add_argument('--window_length', default=1, type=int, help='')
     parser.add_argument('--tau', default=0.01, type=float, help='moving average for target network')
     # noise (truncated normal distribution)
@@ -174,7 +173,7 @@ def train(num_episode, agent, env, output):
             tfwriter.add_scalar('target_ratio/now',env.preserve_ratio)
             tfwriter.add_scalar('reward/lastward_{}'.format(preserve_rate), final_reward, episode)
             tfwriter.add_scalar('reward/best_{}'.format(preserve_rate), env.best_reward[nb], episode)
-            tfwriter.add_scalar('info/accuracy_{}'.format(preserve_rate), info['accuracy'], episode)
+            tfwriter.add_scalar('info/accuracy_ {}'.format(preserve_rate), info['accuracy'], episode)
             tfwriter.add_scalar('info/other_accuracy_{}'.format(preserve_rate), info['accuracy_'], episode)
             tfwriter.add_scalar('info/compress_ratio_{}'.format(preserve_rate), info['compress_ratio'], episode)
             tfwriter.add_text('info/best_policy_{}'.format(preserve_rate), str(env.best_strategy[env.curr_prunRatio_index]), episode)
