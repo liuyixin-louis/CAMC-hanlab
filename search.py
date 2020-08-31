@@ -283,9 +283,6 @@ if __name__ == "__main__":
         # 实例化一个agent
         agent = DDPG(nb_states, nb_actions, args)
 
-        # 加载权重数据
-        # agent.load_weights('/home/young/liuyixin/local/amc_code_StateEbem/logs/mobilenet_imagenet_search_stateEmbe_acc_normalize_savemodel-run48')
-
         # 训练
         train(args.train_episode, agent, env, args.output)
 
