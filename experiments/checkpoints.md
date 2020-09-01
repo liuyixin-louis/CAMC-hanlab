@@ -8,7 +8,7 @@
 | model_arch              | downloadURL                                                  |
 | ----------------------- | ------------------------------------------------------------ |
 | mobilenetv1 on Imagenet | http://www.lyx6178.cn:5000/download/mobilenetv1_imagenet.pth.tar |
-| mobilenetv1 on cifar    | http://www.lyx6178.cn:5000/download/mobilenetv1_cifar10_top1-acc82.07.tar |
+| mobilenetv1 on cifar    | http://www.lyx6178.cn:5000/download/mobilenetv1_cifar10_top1-acc82.07.pth.tar |
 
 ### Script
 
