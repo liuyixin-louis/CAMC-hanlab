@@ -17,8 +17,6 @@
 """This package contains ImageNet and CIFAR image classification models for pytorch"""
 import os
 import sys
-base_path = os.path.dirname(os.path.abspath(__file__)) + '\\..\\'
-sys.path.append(base_path) #这里临时性的把项目目录加入到系统路径中
 import copy
 from functools import partial
 import torch
@@ -26,9 +24,9 @@ import torchvision.models as torch_models
 from torchvision.models.detection.generalized_rcnn import GeneralizedRCNN
 from torchvision.ops.misc import FrozenBatchNorm2d
 import torch.nn as nn
-import cifar10 as cifar10_models
-import mnist as mnist_models
-import imagenet as imagenet_extra_models
+from . import cifar10 as cifar10_models
+from . import mnist as mnist_models
+from . import imagenet as imagenet_extra_models
 import pretrainedmodels
 
 # from distiller.utils import set_model_input_shape_attr, model_setattr

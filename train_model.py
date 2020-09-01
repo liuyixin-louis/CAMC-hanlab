@@ -72,22 +72,22 @@ class EarlyStopping:
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train Network')
-    parser.add_argument('--model', default='mobilenet', type=str, help='name of the model to train')
-    parser.add_argument('--dataset', default='imagenet', type=str, help='name of the dataset to train')
-    parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
-    parser.add_argument('--n_gpu', default=1, type=int, help='number of GPUs to use')
-    parser.add_argument('--batch_size', default=128, type=int, help='batch size')
-    parser.add_argument('--n_worker', default=4, type=int, help='number of data loader worker')
-    parser.add_argument('--lr_type', default='exp', type=str, help='lr scheduler (exp/cos/step3/fixed)')
-    parser.add_argument('--n_epoch', default=150, type=int, help='number of epochs to train')
+    parser.add_argument('--model', default='alexnet', type=str, help='name of the model to train')
+    parser.add_argument('--dataset', default='cifar10', type=str, help='name of the dataset to train')
+    parser.add_argument('--lr', default=0.05, type=float, help='learning rate')
+    parser.add_argument('--n_gpu', default=4, type=int, help='number of GPUs to use')
+    parser.add_argument('--batch_size', default=256, type=int, help='batch size')
+    parser.add_argument('--n_worker', default=32, type=int, help='number of data loader worker')
+    parser.add_argument('--lr_type', default='cos', type=str, help='lr scheduler (exp/cos/step3/fixed)')
+    parser.add_argument('--n_epoch', default=100, type=int, help='number of epochs to train')
     parser.add_argument('--wd', default=4e-5, type=float, help='weight decay')
-    parser.add_argument('--seed', default=None, type=int, help='random seed to set')
-    parser.add_argument('--data_root', default=None, type=str, help='dataset path')
+    parser.add_argument('--seed', default=2020, type=int, help='random seed to set')
+    parser.add_argument('--data_root', default="/home/dataset/cifar", type=str, help='dataset path')
     # resume
     parser.add_argument('--ckpt_path', default=None, type=str, help='checkpoint path to resume from')
     # run eval
     parser.add_argument('--eval', action='store_true', help='Simply run eval')
-    parser.add_argument('--patience', default=5, type=int, help='early stopping patience; how long to wait after last time validation loss improved.')
+    parser.add_argument('--patience', default=20, type=int, help='early stopping patience; how long to wait after last time validation loss improved.')
 
     return parser.parse_args()
 
@@ -156,6 +156,10 @@ def get_model():
         if args.model == "mobilenet":
             from models.mobilenet import MobileNet
             net = MobileNet(n_class=10)
+
+        elif args.model == "alexnet":
+            from models.alexnet import AlexNet
+            net = AlexNet(n_class=10)
         # else:
         #     net = _create_cifar10_model(arch, pretrained)
 
