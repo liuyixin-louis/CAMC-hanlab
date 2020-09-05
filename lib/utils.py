@@ -114,6 +114,8 @@ def measure_layer_for_pruning(layer, x):
                     layer.stride[1] + 1)
         layer.flops = layer.in_channels * layer.out_channels * layer.kernel_size[0] *  \
                     layer.kernel_size[1] * out_h * out_w / layer.groups * multi_add
+        
+        
         layer.params = get_layer_param(layer)
     # ops_linear
     elif type_name in ['Linear']:
@@ -121,7 +123,16 @@ def measure_layer_for_pruning(layer, x):
         bias_ops = layer.bias.numel()
         layer.flops = weight_ops + bias_ops
         layer.params = get_layer_param(layer)
+
+
+    elif type_name in ['BatchNorm2d']:
+        weight_ops = layer.weight.numel() * multi_add
+        bias_ops = layer.bias.numel()
+        layer.flops = weight_ops + bias_ops
+        
     return
+
+
 
 
 def least_square_sklearn(X, Y):

@@ -8,14 +8,13 @@ import numpy as np
 import argparse
 from copy import deepcopy
 torch.backends.cudnn.deterministic = True
-
 from env.channel_pruning_env import ChannelPruningEnv
 from lib.agent import DDPG
 from lib.utils import get_output_folder
 from tensorboardX import SummaryWriter
 
 
-# torch.cuda.set_device(2)
+torch.cuda.set_device(2)
 
 def parse_args():
     parser = argparse.ArgumentParser(description='AMC search script')
@@ -37,7 +36,7 @@ def parse_args():
     # parser.add_argument('--pruning_method', default='cp', type=str,
     #                     help='method to prune (fg/cp for fine-grained and channel pruning)')
     # only for channel pruning
-    parser.add_argument('--n_calibration_batches', default=60, type=int,
+    parser.add_argument('--n_calibration_batches', default=3, type=int,
                         help='n_calibration_batches')
     parser.add_argument('--n_points_per_layer', default=10, type=int,
                         help='method to prune (fg/cp for fine-grained and channel pruning)') # ？？？
@@ -71,6 +70,10 @@ def parse_args():
     parser.add_argument('--n_worker', default=16, type=int, help='number of data loader worker')
     parser.add_argument('--data_bsize', default=50, type=int, help='number of data batch size')
     parser.add_argument('--resume', default='default', type=str, help='Resuming model path for testing')
+
+
+    # checkpoint
+    parser.add_argument('--model_cached_ckp', default='default', type=str, help='Temporary path for model with flops information checkpoint')
 
 
     # export
@@ -116,9 +119,9 @@ def get_model_and_checkpoint(model, dataset, checkpoint_path, n_gpu=1):
             from models.mobilenet import MobileNet
             net = MobileNet(n_class=1000)
         
-        elif args.model == "resnet56":
-            # from models.resnet import ResNet
-            # net = ResNet(depth=56, num_classes=1000)
+        elif args.model == "resnet50":
+            from models.resnet import ResNet
+            net = ResNet(depth=50, num_classes=1000)
             
         # else:
         #     net, cadene = _create_imagenet_model(arch, pretrained)
@@ -204,21 +207,21 @@ def train(num_episode, agent, env, output):
 
 
             # our random number
-            nb = [0.3,0.5,0.7].index(env.preserve_ratio)
-            preserve_rate = env.preserve_ratio
-            tfwriter.add_scalar('target_ratio/now',env.preserve_ratio)
+            # nb = env.curr_prunRatio_index
+            preserve_rate = env.curr_preserve_ratio
+            tfwriter.add_scalar('target_ratio/now',preserve_rate)
             tfwriter.add_scalar('reward/lastward_{}'.format(preserve_rate), final_reward, episode)
-            tfwriter.add_scalar('reward/best_{}'.format(preserve_rate), env.best_reward[nb], episode)
+            tfwriter.add_scalar('reward/best_{}'.format(preserve_rate), env.best_reward[preserve_rate], episode)
             tfwriter.add_scalar('info/accuracy_ {}'.format(preserve_rate), info['accuracy'], episode)
             tfwriter.add_scalar('info/other_accuracy_{}'.format(preserve_rate), info['accuracy_'], episode)
             tfwriter.add_scalar('info/compress_ratio_{}'.format(preserve_rate), info['compress_ratio'], episode)
-            tfwriter.add_text('info/best_policy_{}'.format(preserve_rate), str(env.best_strategy[env.curr_prunRatio_index]), episode)
+            tfwriter.add_text('info/best_policy_{}'.format(preserve_rate), str(env.best_strategy[env.preserve_rate]), episode)
 
             # record the preserve rate for each layer
-            for i, preserve_rate in enumerate(env.strategy[env.curr_prunRatio_index]):
+            for i, preserve_rate in enumerate(env.strategy[env.preserve_rate]):
                 tfwriter.add_scalar('preserve_rate/{}'.format(i), preserve_rate, episode)
 
-            # 这是我们的主要改动，挑选新一轮训练的剪裁率
+            # 挑选新一轮训练的剪裁率
             env.change()
 
             # 重置
@@ -229,28 +232,28 @@ def train(num_episode, agent, env, output):
             T = []
 
 
-def export_model(env, args):
-    assert args.ratios is not None or args.channels is not None, 'Please provide a valid ratio list or pruned channels'
-    assert args.export_path is not None, 'Please provide a valid export path'
-    env.set_export_path(args.export_path)
+# def export_model(env, args):
+#     assert args.ratios is not None or args.channels is not None, 'Please provide a valid ratio list or pruned channels'
+#     assert args.export_path is not None, 'Please provide a valid export path'
+#     env.set_export_path(args.export_path)
 
-    print('=> Original model channels: {}'.format(env.org_channels))
-    if args.ratios:
-        ratios = args.ratios.split(',')
-        ratios = [float(r) for r in ratios]
-        assert  len(ratios) == len(env.org_channels)
-        channels = [int(r * c) for r, c in zip(ratios, env.org_channels)]
-    else:
-        channels = args.channels.split(',')
-        channels = [int(r) for r in channels]
-        ratios = [c2 / c1 for c2, c1 in zip(channels, env.org_channels)]
-    print('=> Pruning with ratios: {}'.format(ratios))
-    print('=> Channels after pruning: {}'.format(channels))
+#     print('=> Original model channels: {}'.format(env.org_channels))
+#     if args.ratios:
+#         ratios = args.ratios.split(',')
+#         ratios = [float(r) for r in ratios]
+#         assert  len(ratios) == len(env.org_channels)
+#         channels = [int(r * c) for r, c in zip(ratios, env.org_channels)]
+#     else:
+#         channels = args.channels.split(',')
+#         channels = [int(r) for r in channels]
+#         ratios = [c2 / c1 for c2, c1 in zip(channels, env.org_channels)]
+#     print('=> Pruning with ratios: {}'.format(ratios))
+#     print('=> Channels after pruning: {}'.format(channels))
 
-    for r in ratios:
-        env.step(r)
+#     for r in ratios:
+#         env.step(r)
 
-    return
+#     return
 
 
 if __name__ == "__main__":
@@ -296,8 +299,8 @@ if __name__ == "__main__":
         # 训练
         train(args.train_episode, agent, env, args.output)
 
-    elif args.job == 'export':
-        # 导出
-        export_model(env, args)
-    else:
-        raise RuntimeError('Undefined job {}'.format(args.job))
+    # elif args.job == 'export':
+    #     # 导出
+    #     export_model(env, args)
+    # else:
+    #     raise RuntimeError('Undefined job {}'.format(args.job))

@@ -53,20 +53,21 @@
             "cwd": "${fileDirname}",
             "args":[
                 "--job","train",
-                "--model","preresnet" ,
-                "--dataset","cifar10",
+                "--model","resnet50" ,
+                "--dataset","imagenet",
                 "--lbound","0.2" ,
                 "--rbound","1" ,
                 "--reward","acc_normalize" ,
-                "--data_root","/home/dataset/cifar" ,
-                "--ckpt_path","/home/young/liuyixin/8.29/CAMC/checkpoints/resnet56_pretrained.pth" ,
+                "--data_root","/home/dataset/imagenet" ,
+                "--ckpt_path","/home/young/liuyixin/8.29/CAMC/checkpoints/resnet50-19c8e357.pth" ,
                 "--seed","2020",
-                "--data_bsize","64",
+                "--data_bsize","5",
                 "--n_gpu","1",
                 "--warmup","200",
                 "--rmsize","200",
                 "--train_episode","800",
-                "--suffix","resnet56_imagenet_trainDDPG"
+                "--suffix","DEV_DEBUG",
+                "--model_cached_ckp","/home/young/liuyixin/8.29/CAMC/cached"
             ]
         }
         
