@@ -11,7 +11,6 @@ from lib.basic_hook import *
 
 import numpy as np
 import copy
-count = 0
 
 class ChannelPruningEnv:
     """
@@ -72,12 +71,15 @@ class ChannelPruningEnv:
         # 3. 建立状态嵌入表示（静态部分）
         self._build_state_embedding() 
 
+        self.strategy_dict = [[1.0,1.0]]* len(self.model_list)
+        self.n_prunable_layer = len(self.prunable_index)
+
         # now we save the model checkpoint
         torch.save(self.model.state_dict(), self.args.model_cached_ckp)
         self.checkpoint = self.args.model_cached_ckp
 
-    
-        # 'reset env for init'
+
+        # reset env for init
         self.reset()  # 清空环境 
 
 
@@ -99,9 +101,7 @@ class ChannelPruningEnv:
 
         self.best_reward = dict(zip(self.support_prun_ratio,[-math.inf]*len(self.support_prun_ratio)))
         self.best_strategy = dict(zip(self.support_prun_ratio,[[]]*len(self.support_prun_ratio)))
-
         self.best_d_prime_list = dict(zip(self.support_prun_ratio,[[]]*len(self.support_prun_ratio)))
-
         self.org_w_size = sum(self.wsize_list)
 
 
@@ -129,6 +129,7 @@ class ChannelPruningEnv:
             m.register_buffer('total_ops', torch.zeros(1, dtype=torch.float64))
             m.register_buffer('total_params', torch.zeros(1, dtype=torch.float64))
             m.register_buffer('prun_weight', torch.zeros_like(m.weight)) # for prun ops convenient
+            m.register_buffer('origin_weight', m.weight) # for prun ops convenient
 
 
             for p in m.parameters():
@@ -171,7 +172,10 @@ class ChannelPruningEnv:
         self.wsize_list = []
         self.flops_list = []
         self.model_list = []
-
+        self.wsize_prunable_list = []
+        self.flops_prunable_list = []
+        
+        
         
         # let the images flow
         prev_training_status = model.training
@@ -213,6 +217,20 @@ class ChannelPruningEnv:
                         self.prunable_index.append(n+6) # conv3
                         self.prunable_ops.append(m.conv2)
                         self.prunable_ops.append(m.conv3)
+
+                        # flops
+                        self.flops_prunable_list.append(m.conv2.total_ops.item())
+                        self.flops_prunable_list.append(m.bn1.total_ops.item())
+                        self.flops_prunable_list.append(m.conv1.total_ops.item())
+                        self.flops_prunable_list.append(m.conv3.total_ops.item())
+                        self.flops_prunable_list.append(m.bn2.total_ops.item())
+
+                        # wsize
+                        self.wsize_prunable_list.append(m.conv2.total_params.item())
+                        self.wsize_prunable_list.append(m.bn1.total_params.item())
+                        self.wsize_prunable_list.append(m.conv1.total_params.item())
+                        self.wsize_prunable_list.append(m.conv3.total_params.item())
+                        self.wsize_prunable_list.append(m.bn2.total_params.item())
                         
                     m_ops, m_params = dfs_count(m, prefix=prefix + "\t")
                 total_ops += m_ops
@@ -242,7 +260,10 @@ class ChannelPruningEnv:
                 if i_b == 0:
                     # first batch: compute the ops and params
                     total_ops, total_params = dfs_count(model)
+                    self.non_prunable_flops = sum(self.flops_list) - sum(self.flops_prunable_list)
+                    self.non_prunable_wsize = sum(self.wsize_list) - sum(self.wsize_prunable_list)
                     assert len(self.model_list) == len(self.flops_list) 
+
                     
 
                 for ops_layer in self.prunable_ops:
@@ -263,10 +284,15 @@ class ChannelPruningEnv:
                         self.layers_info[ops_layer]['output_feat'] = np.vstack(
                             (self.layers_info[ops_layer]['output_feat'], f_out2save))
         
+        for m, (op_handler, xyrecord_handler) in handler_collection.items():
+            op_handler.remove()
+            xyrecord_handler.remove()
+            m._buffers.pop("total_ops")
+            m._buffers.pop("total_params")
+        
+
         
         
-        self.strategy_dict = [[1.0,1.0]]* len(self.model_list)
-        self.n_prunable_layer = len(self.prunable_index)
 
 
 
@@ -309,9 +335,12 @@ class ChannelPruningEnv:
         self.strategy[self.curr_preserve_ratio].append(action)  # save action to strategy；这一层的保留率加进去
         self.d_prime_list[self.curr_preserve_ratio].append(d_prime)
 
-        self.strategy_dict[self.prunable_index[self.cur_ind]][0] = action 
-        if self.cur_ind > 0: # 不是第一层
-            self.strategy_dict[self.prunable_idx[self.cur_ind - 1]][1] = action # 上一层的输出通道保留率
+        self.strategy_dict[self.prunable_index[self.cur_ind]][0] = action # conv
+        self.strategy_dict[self.prunable_index[self.cur_ind]-2][1] = action # bn output
+        self.strategy_dict[self.prunable_index[self.cur_ind]-3][1] = action # conv output
+
+        # if self.cur_ind > 0: # 不是第一层
+        #     self.strategy_dict[self.prunable_idx[self.cur_ind - 1]][1] = action # 上一层的输出通道保留率
 
         # all the actions are made
         if self._is_final_layer():
@@ -400,7 +429,7 @@ class ChannelPruningEnv:
 
 
         obs = self.layer_embedding[0].copy()
-        obs[-2] = sum(self.wsize_list[slef.:]) * 1. / sum(self.wsize_list)
+        obs[-2] = sum(self.wsize_list[self.prunable_index[0]+1:]) * 1. / sum(self.wsize_list)
         self.extract_time = 0
         self.fit_time = 0
         self.val_time = 0
@@ -471,12 +500,27 @@ class ChannelPruningEnv:
             rec_weight = rec_weight.reshape(-1, 1, 1, d_prime)  # (C_out, K_h, K_w, C_in')
             rec_weight = np.transpose(rec_weight, (0, 3, 1, 2))  # (C_out, C_in', K_h, K_w)
         else:
-            raise NotImplementedError('Todo')
-        if not self.export_model: 
+            import torch.optim as optim
+            import torch.nn.functional as F
+            op.prun_weight.data = op.origin_weight.data[:,mask,:,:]
+            op.weight.data = op.prun_weight.data
+            optimizer = optim.SGD(op.parameters(), lr=args.lr, momentum=args.momentum)
+            for batch_idx in range(masked_X.shape[0]):
+                optimizer.zero_grad()
+                output = op(masked_X[batch_idx])
+                loss = F.MSELoss(output,Y[batch_idx])
+                loss.backward()
+                optimizer.step()
+            rec_weight = op.prun_weight.data
             
-            rec_weight_pad = np.zeros_like(weight)
-            rec_weight_pad[:, mask, :, :] = rec_weight
-            rec_weight = rec_weight_pad
+            # raise NotImplementedError('Todo')
+
+
+
+        # if not self.export_model: 
+        #     rec_weight_pad = np.zeros_like(weight)
+        #     rec_weight_pad[:, mask, :, :] = rec_weight
+        #     rec_weight = rec_weight_pad
 
         # if op_type == 'Linear':
         #     rec_weight = rec_weight.squeeze() # 压缩降维，去掉第一个为1的维度
@@ -519,11 +563,106 @@ class ChannelPruningEnv:
         
         assert len(self.strategy[self.curr_preserve_ratio]) == self.cur_ind # 
 
-        # action = float(action)
-        # action = np.clip(action, 0, 1) # 01截断
+        action = float(action)
+        action = np.clip(action, 0, 1) # 01截断
 
-        # other_comp = 0  
-        # this_comp = 0
+        other_comp = 0  # 其他层
+        this_comp = 0 # 这一层相关的计算量（剪裁这一层输入通道能影响到的范围）
+
+
+        # first we compute this_comp
+        curr_prunable_index = self.prunable_index[self.cur_ind]
+
+        current_layer = self.model_list[curr_prunable_index]
+        if current_layer.kernel_size[0] == 3: # conv2
+            this_comp  = self.layers_info[current_layer]['flops'] * self.lbound + self.layers_info[self.model_list[curr_prunable_index-2]]['flops'] +\
+                 self.layers_info[self.model_list[curr_prunable_index-3]]['flops']
+        else: # conv3
+            this_comp = self.layers_info[current_layer]['flops']  + self.layers_info[self.model_list[curr_prunable_index-2]]['flops'] +\
+                 self.layers_info[self.model_list[curr_prunable_index-3]]['flops'] * self.strategy_dict[curr_prunable_index-3][0]
+        
+        # then the other_comp
+        other_comp += non_prunable_flops # the unrelated part
+            
+        # before the current layer
+        before_prunable_index = self.prunable_index[:self.cur_ind]
+        block_center_index = before_prunable_index[::2]
+        if current_layer.kernel_size[0] == 3: # conv2
+            for i,idx in enumerate(block_center_index):
+                    other_comp += \
+                        self.layers_info[self.model_list[idx]]['flops'] * self.strategy_dict[idx][0] * self.strategy_dict[idx][1] +\
+                        self.layers_info[self.model_list[idx-2]]['flops']  * self.strategy_dict[idx-2][1] + \
+                            self.layers_info[self.model_list[idx-3]]['flops'] * self.strategy_dict[idx-3][1] + \
+                                self.layers_info[self.model_list[idx+1]]['flops'] * self.strategy_dict[idx+1][0] + \
+                                self.layers_info[self.model_list[idx+3]]['flops'] * self.strategy_dict[idx+3][0]
+        else:# conv3
+            for i,idx in enumerate(block_center_index[:-1]):
+                    other_comp += \
+                        self.layers_info[self.model_list[idx]]['flops'] * self.strategy_dict[idx][0] * self.strategy_dict[idx][1] +\
+                        self.layers_info[self.model_list[idx-2]]['flops']  * self.strategy_dict[idx-2][1] + \
+                            self.layers_info[self.model_list[idx-3]]['flops'] * self.strategy_dict[idx-3][1] + \
+                                self.layers_info[self.model_list[idx+1]]['flops'] * self.strategy_dict[idx+1][0] + \
+                                self.layers_info[self.model_list[idx+3]]['flops'] * self.strategy_dict[idx+3][0]
+            # the front part of the same bottleneck block
+            _i = block_center_index[-1]
+            other_comp += self.layers_info[self.model_list[_i-2]]['flops'] * self.strategy_dict[_i][1] + \
+                self.layers_info[self.model_list[_i-3]]['flops'] * self.strategy_dict[_i-3][1]
+        
+        # after the current layer, we use the most aggressive policy as the paper state
+        after_prunable_index = self.prunable_index[self.cur_ind+1:]
+        if current_layer.kernel_size[0] == 3: # conv2
+            # the front part of the same bottleneck block
+            _i = after_prunable_index[0]
+            other_comp += self.layers_info[self.model_list[_i]]['flops'] * self.lbound + \
+                self.layers_info[self.model_list[_i-2]]['flops'] * self.lbound
+            block_center_index = after_prunable_index[1::2]
+            for i,idx in enumerate(block_center_index):
+                    other_comp += \
+                        self.layers_info[self.model_list[idx]]['flops'] * self.lbound * self.lbound +\
+                        self.layers_info[self.model_list[idx-2]]['flops']  * self.lbound + \
+                            self.layers_info[self.model_list[idx-3]]['flops'] * self.lbound + \
+                                self.layers_info[self.model_list[idx+1]]['flops'] * self.lbound + \
+                                self.layers_info[self.model_list[idx+3]]['flops'] * self.lbound
+        else:# conv3
+            block_center_index = after_prunable_index[::2]
+            for i,idx in enumerate(block_center_index):
+                    other_comp += \
+                        self.layers_info[self.model_list[idx]]['flops'] * self.lbound * self.lbound +\
+                        self.layers_info[self.model_list[idx-2]]['flops']  * self.lbound + \
+                            self.layers_info[self.model_list[idx-3]]['flops'] * self.lbound + \
+                                self.layers_info[self.model_list[idx+1]]['flops'] * self.lbound + \
+                                self.layers_info[self.model_list[idx+3]]['flops'] * self.lbound
+        
+        # min except prun ratio that this layer should done , aka max preserve ratio
+        max_preserve_ratio = (self.expected_preserve_computation - other_comp) * 1. / this_comp 
+
+        # if the prun ratio is less than the min except prun ratio, that is the preserve ratio is more than the max_preserve_ratio
+        # we should truncate the preserve ratio to max_preserve_ratio
+        action = np.minimum(action, max_preserve_ratio) 
+
+        # Meanwhile, preserve_ratio should be greater than lbound
+        action = np.maximum(action, self.lbound) 
+        
+        # after the current layer
+        
+        # curr_prunable_index = self.prunable_index[self.cur_ind]
+        # for i , ops in enmuerate(self.model_list):
+        #     if i >= curr_prunable_index-3 and i < curr_prunable_index:
+        #         this_comp += self.layers_info[ops].flops * self.strategy_dict[i][0]  * self.strategy_dict[i][1] 
+        #     elif i==curr_prunable_index:
+        #         this_comp += self.layers_info[ops].flops * self.lbound * self.strategy_dict[i][0] 
+        #     else:
+        #         def prunable_block_after(i,curr_prunable_index):
+        #             for prun_idx in curr_prunable_index:
+        #                 if prun_idx > curr_prunable_index:
+        #                     if i>=prun_idx-3 and i<=prun_idx:
+        #                         return True
+                
+        #         if prunable_block_after(i,curr_prunable_index):
+                    
+        #         else:
+        #             other_comp += self.layers_info[ops].flops * self.strategy_dict[i][0] * self.strategy_dict[i][1]
+
 
         # for  idx in (self.prunable_index):
 
@@ -546,17 +685,16 @@ class ChannelPruningEnv:
         # max_preserve_ratio = (self.expected_preserve_computation - other_comp) * 1. / this_comp 
 
         # action = np.minimum(action, max_preserve_ratio) 
-        
-
+    
         # action = np.maximum(action, self.strategy_dict[self.prunable_idx[self.cur_ind]][0])  # impossible (should be) 
 
         return action
 
-    def _get_buffer_flops(self, idx):
-        """获取该非缓冲层对应前面的缓冲层的总浮点运算数"""
-        buffer_idx = self.buffer_dict[idx]
-        buffer_flop = sum([self.layer_info_dict[_]['flops'] for _ in buffer_idx])
-        return buffer_flop
+    # def _get_buffer_flops(self, idx):
+    #     """获取该非缓冲层对应前面的缓冲层的总浮点运算数"""
+    #     buffer_idx = self.buffer_dict[idx]
+    #     buffer_flop = sum([self.layer_info_dict[_]['flops'] for _ in buffer_idx])
+    #     return buffer_flop
 
     def _cur_flops(self):
         """计算网络中目前的flops"""

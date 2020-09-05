@@ -3,3 +3,4 @@ logs/
 temp/origin_amc/amc/checkpoints/
 temp/origin_amc/amc/logs/
 experiments/result
+cached/
