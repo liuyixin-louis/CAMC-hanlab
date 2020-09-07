@@ -5,26 +5,29 @@ import torch
 import torch.nn as nn
 from torch.nn.modules.conv import _ConvNd
 
+USE_CUDA = torch.cuda.is_available()
+device = torch.device("cuda:0" if USE_CUDA else "cpu")
+
 multiply_adds = 1 # 一个MAC
 
 
 def record_xy(m,x,y):
-    m.register_buffer('input_feat', x[0])
-    m.register_buffer('output_feat', y)
+    m.register_buffer('input_feat', x[0].cuda())
+    m.register_buffer('output_feat', y.cuda())
 
     
 
 def count_parameters(m, x, y):
     total_params = 0
     for p in m.parameters():
-        total_params += torch.DoubleTensor([p.numel()])
+        total_params += torch.DoubleTensor([p.numel()]).cuda()
     m.total_params[0] = total_params
 
 
 def zero_ops(m, x, y):
     x = x[0]
     
-    m.total_ops += torch.DoubleTensor([int(0)])
+    m.total_ops += torch.DoubleTensor([int(0)]).cuda()
 
 
 def count_convNd(m: _ConvNd, x: (torch.Tensor,), y: torch.Tensor):
@@ -36,7 +39,7 @@ def count_convNd(m: _ConvNd, x: (torch.Tensor,), y: torch.Tensor):
     # N x Cout x H x W x  (Cin x Kw x Kh + bias)
     total_ops = y.nelement() * (m.in_channels // m.groups * kernel_ops + bias_ops)
 
-    m.total_ops += torch.DoubleTensor([int(total_ops)])
+    m.total_ops += torch.DoubleTensor([int(total_ops)]).cuda()
 
 def count_convNd_ver2(m: _ConvNd, x: (torch.Tensor,), y: torch.Tensor):
     x = x[0]
@@ -49,7 +52,7 @@ def count_convNd_ver2(m: _ConvNd, x: (torch.Tensor,), y: torch.Tensor):
         # Cout x 1
         kernel_ops += + m.bias.nelement()
     # x N x H x W x Cout x (Cin x Kw x Kh + bias)
-    m.total_ops += torch.DoubleTensor([int(output_size * kernel_ops)])
+    m.total_ops += torch.DoubleTensor([int(output_size * kernel_ops)]).cuda()
 
 
 def count_bn(m, x, y):
@@ -60,7 +63,7 @@ def count_bn(m, x, y):
         # subtract, divide, gamma, beta
         total_ops = 2 * nelements
 
-    m.total_ops += torch.DoubleTensor([int(total_ops)])
+    m.total_ops += torch.DoubleTensor([int(total_ops)]).cuda()
 
 
 def count_relu(m, x, y):
@@ -68,7 +71,7 @@ def count_relu(m, x, y):
 
     nelements = x.numel()
 
-    m.total_ops += torch.DoubleTensor([int(nelements)])
+    m.total_ops += torch.DoubleTensor([int(nelements)]).cuda()
 
 
 def count_softmax(m, x, y):
@@ -81,7 +84,7 @@ def count_softmax(m, x, y):
     total_div = nfeatures
     total_ops = batch_size * (total_exp + total_add + total_div)
 
-    m.total_ops += torch.DoubleTensor([int(total_ops)])
+    m.total_ops += torch.DoubleTensor([int(total_ops)]).cuda()
 
 
 def count_avgpool(m, x, y):
@@ -92,7 +95,7 @@ def count_avgpool(m, x, y):
     num_elements = y.numel()
     total_ops = kernel_ops * num_elements
 
-    m.total_ops += torch.DoubleTensor([int(total_ops)])
+    m.total_ops += torch.DoubleTensor([int(total_ops)]).cuda()
 
 
 def count_adap_avgpool(m, x, y):
@@ -103,7 +106,7 @@ def count_adap_avgpool(m, x, y):
     num_elements = y.numel()
     total_ops = kernel_ops * num_elements
 
-    m.total_ops += torch.DoubleTensor([int(total_ops)])
+    m.total_ops += torch.DoubleTensor([int(total_ops)]).cuda()
 
 
 # TODO: verify the accuracy
@@ -132,7 +135,7 @@ def count_upsample(m, x, y):
         # can viewed as 2 bilinear + 1 linear
         total_ops = y.nelement() * (13 * 2 + 5)
 
-    m.total_ops += torch.DoubleTensor([int(total_ops)])
+    m.total_ops += torch.DoubleTensor([int(total_ops)]).cuda()
 
 
 # nn.Linear
@@ -144,7 +147,7 @@ def count_linear(m, x, y):
     num_elements = y.numel()
     total_ops = total_mul * num_elements
 
-    m.total_ops += torch.DoubleTensor([int(total_ops)])
+    m.total_ops += torch.DoubleTensor([int(total_ops)]).cuda()
 
 
 
@@ -163,7 +166,7 @@ def count_rnn_cell(m: nn.RNNCell, x: torch.Tensor, y: torch.Tensor):
     batch_size = x[0].size(0)
     total_ops *= batch_size
 
-    m.total_ops += torch.DoubleTensor([int(total_ops)])
+    m.total_ops += torch.DoubleTensor([int(total_ops)]).cuda()
 
 
 def _count_gru_cell(input_size, hidden_size, bias=True):
@@ -195,7 +198,7 @@ def count_gru_cell(m: nn.GRUCell, x: torch.Tensor, y: torch.Tensor):
     batch_size = x[0].size(0)
     total_ops *= batch_size
 
-    m.total_ops += torch.DoubleTensor([int(total_ops)])
+    m.total_ops += torch.DoubleTensor([int(total_ops)]).cuda()
 
 
 def _count_lstm_cell(input_size, hidden_size, bias=True):
@@ -226,7 +229,7 @@ def count_lstm_cell(m: nn.LSTMCell, x: torch.Tensor, y: torch.Tensor):
     batch_size = x[0].size(0)
     total_ops *= batch_size
 
-    m.total_ops += torch.DoubleTensor([int(total_ops)])
+    m.total_ops += torch.DoubleTensor([int(total_ops)]).cuda()
 
 
 def count_rnn(m: nn.RNN, x: torch.Tensor, y: torch.Tensor):
@@ -260,7 +263,7 @@ def count_rnn(m: nn.RNN, x: torch.Tensor, y: torch.Tensor):
     # batch_size
     total_ops *= batch_size
 
-    m.total_ops += torch.DoubleTensor([int(total_ops)])
+    m.total_ops += torch.DoubleTensor([int(total_ops)]).cuda()
 
 
 def count_gru(m: nn.GRU, x: torch.Tensor, y: torch.Tensor):
@@ -294,7 +297,7 @@ def count_gru(m: nn.GRU, x: torch.Tensor, y: torch.Tensor):
     # batch_size
     total_ops *= batch_size
 
-    m.total_ops += torch.DoubleTensor([int(total_ops)])
+    m.total_ops += torch.DoubleTensor([int(total_ops)]).cuda()
 
 
 def count_lstm(m: nn.LSTM, x: torch.Tensor, y: torch.Tensor):
@@ -328,7 +331,7 @@ def count_lstm(m: nn.LSTM, x: torch.Tensor, y: torch.Tensor):
     # batch_size
     total_ops *= batch_size
 
-    m.total_ops += torch.DoubleTensor([int(total_ops)])
+    m.total_ops += torch.DoubleTensor([int(total_ops)]).cuda()
 
 # hooks maps are defined here
 register_hooks = {

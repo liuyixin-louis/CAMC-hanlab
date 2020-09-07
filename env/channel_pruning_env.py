@@ -13,6 +13,9 @@ import numpy as np
 import copy
 
 from lib.mask2D import MaskConv2d
+USE_CUDA = torch.cuda.is_available()
+device = torch.device("cuda:0" if USE_CUDA else "cpu")
+
 
 
 class ChannelPruningEnv:
@@ -174,15 +177,16 @@ class ChannelPruningEnv:
             #     logging.warning("Either .total_ops or .total_params is already defined in %s. "
             #                     "Be careful, it might change your code's behavior." % str(m))
 
-            m.register_buffer('total_ops', torch.zeros(1, dtype=torch.float64))
-            m.register_buffer('total_params', torch.zeros(1, dtype=torch.float64))
+            m.register_buffer('total_ops', torch.zeros(1, dtype=torch.float64).cuda())
+            m.register_buffer('total_params', torch.zeros(1, dtype=torch.float64).cuda())
+            
             if get_layer_type(m) in ['Conv2d','BatchNorm2d']:
-                m.register_buffer('prun_weight', m.weight.clone()) # for prun ops convenient
-                m.register_buffer('origin_weight', m.weight.clone()) # for prun ops convenient
+                m.register_buffer('prun_weight', m.weight.clone().cuda()) # for prun ops convenient
+                m.register_buffer('origin_weight', m.weight.clone().cuda()) # for prun ops convenient
 
 
             for p in m.parameters():
-                m.total_params += torch.DoubleTensor([p.numel()])
+                m.total_params += torch.DoubleTensor([p.numel()]).cuda()
 
             m_type = type(m)
 
@@ -257,7 +261,6 @@ class ChannelPruningEnv:
                     self.wsize_list.append(m_params)
                     self.flops_list.append(m_ops)
                     self.layers_info[m] = {"flops":m_ops,"params":m_params}
-                    
                     
                 else:
                     if get_layer_type(m) == "Bottleneck":
@@ -389,10 +392,10 @@ class ChannelPruningEnv:
 
         op_mask.d[preserve_idx] = 1
 
-        if self.args.debug_test:
-            preserve_idx = np.argsort(-np.abs(weight).sum((0, 2, 3)))[: format_rank(c * 0.9)]
-            op_mask.d[preserve_idx] = 1
-            return 0.9,format_rank(c * 0.9),preserve_idx
+        # if self.args.debug_test:
+        #     preserve_idx = np.argsort(-np.abs(weight).sum((0, 2, 3)))[: format_rank(c * 0.9)]
+        #     op_mask.d[preserve_idx] = 1
+        #     return 0.9,format_rank(c * 0.9),preserve_idx
 
         return action,d_prime,preserve_idx
 

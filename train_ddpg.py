@@ -13,9 +13,11 @@ from lib.agent import DDPG
 from lib.utils import get_output_folder,_prCyan_time
 from tensorboardX import SummaryWriter
 
+USE_CUDA = torch.cuda.is_available()
+device = torch.device("cuda:0" if USE_CUDA else "cpu")
 
 
-# torch.cuda.set_device(2)
+torch.cuda.set_device(2)
 
 def parse_args():
     parser = argparse.ArgumentParser(description='AMC search script')
@@ -71,7 +73,7 @@ def parse_args():
     parser.add_argument('--n_worker', default=16, type=int, help='number of data loader worker')
     parser.add_argument('--data_bsize', default=50, type=int, help='number of data batch size')
     parser.add_argument('--resume', default='default', type=str, help='Resuming model path for testing')
-    parser.add_argument('--debug_test', default='False', type=bool, help='Debug mode')
+    parser.add_argument('--debug_test', default=False, type=bool, help='Debug mode')
 
 
     # checkpoint
@@ -158,6 +160,7 @@ def get_model_and_checkpoint(model, dataset, checkpoint_path, n_gpu=1):
     net = net.cuda()
     if n_gpu > 1:
         net = torch.nn.DataParallel(net, range(n_gpu))
+        net = net.cuda()
 
     return net, deepcopy(net.state_dict())
 
