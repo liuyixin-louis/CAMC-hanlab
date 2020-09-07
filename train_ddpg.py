@@ -71,6 +71,7 @@ def parse_args():
     parser.add_argument('--n_worker', default=16, type=int, help='number of data loader worker')
     parser.add_argument('--data_bsize', default=50, type=int, help='number of data batch size')
     parser.add_argument('--resume', default='default', type=str, help='Resuming model path for testing')
+    parser.add_argument('--debug_test', default='False', type=bool, help='Debug mode')
 
 
     # checkpoint

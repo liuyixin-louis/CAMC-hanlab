@@ -87,7 +87,7 @@ class DDPG(object):
         self.tau = args.tau
         self.discount = args.discount
         self.depsilon = 1.0 / args.epsilon
-        self.lbound = 0.  # args.lbound
+        self.lbound = 0.01  # args.lbound
         self.rbound = 1.  # args.rbound
 
         # noise

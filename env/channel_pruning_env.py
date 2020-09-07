@@ -85,29 +85,29 @@ class ChannelPruningEnv:
         _prCyan_time("_build_state_embedding time cost:",t2-t1)
 
 
-        # 4. replace the conv prunable layer with mask_conv2d
-        mask_t1 = time.time()
-        self.get_mask()
-        mask_t2 = time.time()
-        _prCyan_time('mask time:',mask_t2 - mask_t1)
 
         self.strategy_dict = [[1.0,1.0] for _ in (self.model_list)]
         self.n_prunable_layer = len(self.prunable_index)
 
-        # now we save the model checkpoint
-        t = time.time()
-        torch.save(self.model.state_dict(), self.args.model_cached_ckp)
-        t_ = time.time()
-        _prCyan_time('save model checkpoint time:',t_-t)
         
-        self.checkpoint = self.args.model_cached_ckp
-
-
-        t = time.time()
         # reset env for init
-        self.reset()  # 清空环境 
-        t_ = time.time()
-        _prCyan_time('init reset time:',t_-t)
+        # self.reset()  # 清空环境 
+        self.cur_ind = 0 
+        self.strategy = dict(zip(self.support_prun_ratio,[[] for _ in self.support_prun_ratio]))
+        self.d_prime_list = dict(zip(self.support_prun_ratio,[[] for _ in self.support_prun_ratio]))
+        # self.strategy_dict = copy.deepcopy(self.min_strategy_dict) 
+
+        # reset all the  layer embeddings
+        self.layer_embedding[:, -1] = 1.
+        self.layer_embedding[:, -2] = 0.
+        self.layer_embedding[:, -3] = 0.
+
+        obs = self.layer_embedding[0].copy()
+        obs[-2] = sum(self.wsize_prunable_list[3:]) * 1. / sum(self.wsize_prunable_list)
+        self.extract_time = 0
+        self.fit_time = 0
+        self.val_time = 0
+
 
 
         # 模型的一些指标
@@ -133,6 +133,19 @@ class ChannelPruningEnv:
         self.best_d_prime_list = dict(zip(self.support_prun_ratio,[[] for _ in (self.support_prun_ratio)]))
         self.org_w_size = sum(self.wsize_prunable_list)
 
+        # 4. replace the conv prunable layer with mask_conv2d
+        mask_t1 = time.time()
+        self.get_mask()
+        mask_t2 = time.time()
+        _prCyan_time('mask time:',mask_t2 - mask_t1)
+
+        # now we save the model checkpoint
+        t = time.time()
+        torch.save(self.model.state_dict(), self.args.model_cached_ckp)
+        t_ = time.time()
+        _prCyan_time('save model checkpoint time:',t_-t)
+        
+        self.checkpoint = self.args.model_cached_ckp
 
         # log path init
         self.output = None
@@ -376,10 +389,10 @@ class ChannelPruningEnv:
 
         op_mask.d[preserve_idx] = 1
 
-        # # debug
-        # preserve_idx = np.argsort(-np.abs(weight).sum((0, 2, 3)))[: format_rank(c * 0.9)]
-        # op_mask.d[preserve_idx] = 1
-        # return 0.9,format_rank(c * 0.9),preserve_idx
+        if self.args.debug:
+            preserve_idx = np.argsort(-np.abs(weight).sum((0, 2, 3)))[: format_rank(c * 0.9)]
+            op_mask.d[preserve_idx] = 1
+            return 0.9,format_rank(c * 0.9),preserve_idx
 
         return action,d_prime,preserve_idx
 
@@ -1267,7 +1280,7 @@ class ChannelPruningEnv:
 
         current_layer = self.model_list[curr_prunable_index]
         if current_layer.kernel_size[0] == 3: # conv2
-            this_comp  = self.layers_info[current0_layer]['flops'] * self.lbound + self.layers_info[self.model_list[curr_prunable_index-2]]['flops'] +\
+            this_comp  = self.layers_info[current_layer]['flops'] * self.lbound + self.layers_info[self.model_list[curr_prunable_index-2]]['flops'] +\
                  self.layers_info[self.model_list[curr_prunable_index-3]]['flops']
         else: # conv3
             this_comp = self.layers_info[current_layer]['flops']  + self.layers_info[self.model_list[curr_prunable_index-2]]['flops'] +\
