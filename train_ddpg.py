@@ -15,7 +15,7 @@ from tensorboardX import SummaryWriter
 
 
 
-torch.cuda.set_device(2)
+# torch.cuda.set_device(2)
 
 def parse_args():
     parser = argparse.ArgumentParser(description='AMC search script')

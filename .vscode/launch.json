@@ -62,7 +62,7 @@
                 "--ckpt_path","/home/young/liuyixin/8.29/CAMC/checkpoints/resnet50-19c8e357.pth" ,
                 "--seed","2020",
                 "--data_bsize","5",
-                "--n_gpu","1",
+                "--n_gpu","4",
                 "--warmup","20",
                 "--rmsize","20",
                 "--train_episode","100",

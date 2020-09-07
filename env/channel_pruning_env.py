@@ -389,7 +389,7 @@ class ChannelPruningEnv:
 
         op_mask.d[preserve_idx] = 1
 
-        if self.args.debug:
+        if self.args.debug_test:
             preserve_idx = np.argsort(-np.abs(weight).sum((0, 2, 3)))[: format_rank(c * 0.9)]
             op_mask.d[preserve_idx] = 1
             return 0.9,format_rank(c * 0.9),preserve_idx
