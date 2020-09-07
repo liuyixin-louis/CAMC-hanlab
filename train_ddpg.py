@@ -10,8 +10,9 @@ from copy import deepcopy
 torch.backends.cudnn.deterministic = True
 from env.channel_pruning_env import ChannelPruningEnv
 from lib.agent import DDPG
-from lib.utils import get_output_folder
+from lib.utils import get_output_folder,_prCyan_time
 from tensorboardX import SummaryWriter
+
 
 
 torch.cuda.set_device(2)
@@ -36,7 +37,7 @@ def parse_args():
     # parser.add_argument('--pruning_method', default='cp', type=str,
     #                     help='method to prune (fg/cp for fine-grained and channel pruning)')
     # only for channel pruning
-    parser.add_argument('--n_calibration_batches', default=3, type=int,
+    parser.add_argument('--n_calibration_batches', default=60, type=int,
                         help='n_calibration_batches')
     parser.add_argument('--n_points_per_layer', default=10, type=int,
                         help='method to prune (fg/cp for fine-grained and channel pruning)') # ？？？
@@ -81,6 +82,12 @@ def parse_args():
     parser.add_argument('--channels', default=None, type=str, help='channels after pruning')
     parser.add_argument('--export_path', default=None, type=str, help='path for exporting models')
     # parser.add_argument('--use_new_input', dest='use_new_input', action='store_true', help='use new input feature')
+
+
+    parser.add_argument('--lr', type=float, default=1, metavar='LR',
+                        help='learning rate (default: 0.01)')
+    parser.add_argument('--momentum', type=float, default=0.5, metavar='M',
+                        help='SGD momentum (default: 0.5)')
 
     return parser.parse_args()
 
@@ -161,12 +168,15 @@ def train(num_episode, agent, env, output):
     episode_reward = 0.
     observation = None
     T = []  # trajectory
+    t_1 = time.time()
     while episode < num_episode:  # counting based on episode
-
+        t5 = time.time()
         # 初始时获取观察向量
         if observation is None:
+            t1 = time.time()
             observation = deepcopy(env.reset()) 
-
+            t2 = time.time()
+            _prCyan_time("new episode reset cost time",t2-t1)
         # agent pick action ...注：action为保留率
         if episode <= args.warmup:
             action = agent.random_action()
@@ -181,7 +191,7 @@ def train(num_episode, agent, env, output):
         T.append([reward, deepcopy(observation), deepcopy(observation2), action, done])
 
         # agent 保存模型
-        if episode % 10 == 0:
+        if episode % 100 == 0:
             agent.save_model(output)
 
         # update
@@ -190,21 +200,28 @@ def train(num_episode, agent, env, output):
         episode_reward += reward
         observation = deepcopy(observation2)
 
+        t6 = time.time()
+        # print('one step:',t6-t5)
+
         if done:  # end of episode
-            
+            t_2 = time.time()
+            _prCyan_time('one episode:',t_2 - t_1)
+            t_1 = time.time()
             
             print('#{}: episode_reward:{:.4f} acc: {:.4f},acc_:{:.4f}, ratio: {:.4f},TargetRatio: {:.4f},done:{:.4f},strategy:{}'.format(episode, episode_reward,
                                                                                  info['accuracy'],info['accuracy_'],
-                                                                                 info['compress_ratio'],env.preserve_ratio,info['compress_ratio']/env.preserve_ratio,info['strategy']))
+                                                                                 info['compress_ratio'],env.curr_preserve_ratio,info['compress_ratio']/env.curr_preserve_ratio,info['strategy']))
             
             final_reward = T[-1][0] # 最后的奖励
 
             # agent observe and update policy
+            t_3 = time.time()
             for r_t, s_t, s_t1, a_t, done in T:
                 agent.observe(final_reward, s_t, s_t1, a_t, done) # 积累经验
                 if episode > args.warmup:
                     agent.update_policy()
-
+            t_4 = time.time()
+            _prCyan_time('agent update cost time:',t_4 - t_3)
 
             # our random number
             # nb = env.curr_prunRatio_index
@@ -215,10 +232,10 @@ def train(num_episode, agent, env, output):
             tfwriter.add_scalar('info/accuracy_ {}'.format(preserve_rate), info['accuracy'], episode)
             tfwriter.add_scalar('info/other_accuracy_{}'.format(preserve_rate), info['accuracy_'], episode)
             tfwriter.add_scalar('info/compress_ratio_{}'.format(preserve_rate), info['compress_ratio'], episode)
-            tfwriter.add_text('info/best_policy_{}'.format(preserve_rate), str(env.best_strategy[env.preserve_rate]), episode)
+            tfwriter.add_text('info/best_policy_{}'.format(preserve_rate), str(env.best_strategy[env.curr_preserve_ratio]), episode)
 
             # record the preserve rate for each layer
-            for i, preserve_rate in enumerate(env.strategy[env.preserve_rate]):
+            for i, preserve_rate in enumerate(env.strategy[env.curr_preserve_ratio]):
                 tfwriter.add_scalar('preserve_rate/{}'.format(i), preserve_rate, episode)
 
             # 挑选新一轮训练的剪裁率
@@ -266,14 +283,27 @@ if __name__ == "__main__":
         torch.manual_seed(args.seed)
         torch.cuda.manual_seed(args.seed)
 
+    # debug time 
+    import time
+    t1 = time.time()
+
     # 获取模型和检查点
     model, checkpoint = get_model_and_checkpoint(args.model, args.dataset, checkpoint_path=args.ckpt_path,
                                                  n_gpu=args.n_gpu)
+
+    t2 = time.time()
+
+    _prCyan_time("model loading",t2-t1)
+
 
     # 通道剪裁环境
     env = ChannelPruningEnv(model, checkpoint, args.dataset,
                             n_data_worker=args.n_worker, batch_size=args.data_bsize,
                             args=args, export_model=args.job == 'export')
+
+    t3 = time.time()
+
+    _prCyan_time("env building",t3-t2)
 
     if args.job == 'train':
         # build folder and logs
@@ -290,7 +320,7 @@ if __name__ == "__main__":
         nb_states = env.layer_embedding.shape[1] # 第二个维度的长度
         nb_actions = 1  # just 1 action here
 
-        args.rmsize = args.rmsize * len(env.prunable_idx)  # for each layer 每个可以剪裁的通道环境的记忆库容量
+        args.rmsize = args.rmsize * len(env.prunable_index)  # for each layer 每个可以剪裁的通道环境的记忆库容量
         print('** Actual replay buffer size: {}'.format(args.rmsize))
 
         # 实例化一个agent
@@ -298,6 +328,8 @@ if __name__ == "__main__":
 
         # 训练
         train(args.train_episode, agent, env, args.output)
+    elif args.job == "debug":
+        env.debug_test_prun(repair = True)
 
     # elif args.job == 'export':
     #     # 导出

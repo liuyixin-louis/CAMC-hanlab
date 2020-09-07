@@ -22,6 +22,8 @@ def count_parameters(m, x, y):
 
 
 def zero_ops(m, x, y):
+    x = x[0]
+    
     m.total_ops += torch.DoubleTensor([int(0)])
 
 
@@ -35,7 +37,6 @@ def count_convNd(m: _ConvNd, x: (torch.Tensor,), y: torch.Tensor):
     total_ops = y.nelement() * (m.in_channels // m.groups * kernel_ops + bias_ops)
 
     m.total_ops += torch.DoubleTensor([int(total_ops)])
-
 
 def count_convNd_ver2(m: _ConvNd, x: (torch.Tensor,), y: torch.Tensor):
     x = x[0]
