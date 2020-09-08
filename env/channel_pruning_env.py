@@ -227,6 +227,7 @@ class ChannelPruningEnv:
         self.model_list = []
         self.wsize_prunable_list = []
         self.flops_prunable_list = []
+        self.flops_prunable_list_ops = []
         # self.prunable_ops_mask = []
         
         
@@ -247,7 +248,7 @@ class ChannelPruningEnv:
             return layer_str[:layer_str.find('(')].strip()
 
         def dfs_count(module: nn.Module, prefix="\t") -> (int, int):
-            """深度优先，仅计算最小可算flops的层；遇到约定的剪枝层时加入要列表做记录；"""
+            """深度优先计算模块的总flops和参数量，仅计算最小可算flops的层；遇到约定的剪枝层时加入要列表做记录；"""
 
             total_ops, total_params = 0, 0
             for m in module.children():
@@ -286,6 +287,15 @@ class ChannelPruningEnv:
                         self.wsize_prunable_list.append(m.conv2.total_params.item())
                         self.wsize_prunable_list.append(m.bn2.total_params.item())
                         self.wsize_prunable_list.append(m.conv3.total_params.item())
+
+
+                        # for convenience of flops compute
+                        self.flops_prunable_list_ops.append(m.conv1)
+                        self.flops_prunable_list_ops.append(m.bn1)
+                        self.flops_prunable_list_ops.append(m.conv2)
+                        self.flops_prunable_list_ops.append(m.bn2)
+                        self.flops_prunable_list_ops.append(m.conv3)
+                        
                         
                     m_ops, m_params = dfs_count(m, prefix=prefix + "\t")
                 total_ops += m_ops
@@ -1295,10 +1305,11 @@ class ChannelPruningEnv:
         # before the current layer
         before_prunable_index = self.prunable_index[:self.cur_ind]
         block_center_index = before_prunable_index[::2]
+        before = 0
         if current_layer.kernel_size[0] == 3: # conv2
             if before_prunable_index is not []:
                 for i,idx in enumerate(block_center_index):
-                        other_comp += \
+                        before += \
                             self.layers_info[self.model_list[idx]]['flops'] * self.strategy_dict[idx][0] * self.strategy_dict[idx][1] +\
                             self.layers_info[self.model_list[idx-2]]['flops']  * self.strategy_dict[idx-2][1] + \
                                 self.layers_info[self.model_list[idx-3]]['flops'] * self.strategy_dict[idx-3][1] + \
@@ -1306,7 +1317,7 @@ class ChannelPruningEnv:
                                     self.layers_info[self.model_list[idx+3]]['flops'] * self.strategy_dict[idx+3][0]
         else:# conv3
             for i,idx in enumerate(block_center_index[:-1]):
-                    other_comp += \
+                    before += \
                         self.layers_info[self.model_list[idx]]['flops'] * self.strategy_dict[idx][0] * self.strategy_dict[idx][1] +\
                         self.layers_info[self.model_list[idx-2]]['flops']  * self.strategy_dict[idx-2][1] + \
                             self.layers_info[self.model_list[idx-3]]['flops'] * self.strategy_dict[idx-3][1] + \
@@ -1314,35 +1325,53 @@ class ChannelPruningEnv:
                                 self.layers_info[self.model_list[idx+3]]['flops'] * self.strategy_dict[idx+3][0]
             # the front part of the same bottleneck block
             _i = block_center_index[-1]
-            other_comp += self.layers_info[self.model_list[_i-2]]['flops'] * self.strategy_dict[_i-2][1] + \
+            before += self.layers_info[self.model_list[_i-2]]['flops'] * self.strategy_dict[_i-2][1] + \
                 self.layers_info[self.model_list[_i-3]]['flops'] * self.strategy_dict[_i-3][1]
+        other_comp +=before
         
         # after the current layer, we use the most aggressive policy as the paper state
+        after = 0
         after_prunable_index = self.prunable_index[self.cur_ind+1:]
         if current_layer.kernel_size[0] == 3: # conv2
             # the front part of the same bottleneck block
             if after_prunable_index is not []:
                 _i = after_prunable_index[0]
-                other_comp += self.layers_info[self.model_list[_i]]['flops'] * self.lbound + \
+                after += self.layers_info[self.model_list[_i]]['flops'] * self.lbound + \
                     self.layers_info[self.model_list[_i-2]]['flops'] * self.lbound
                 block_center_index = after_prunable_index[1::2]
                 for i,idx in enumerate(block_center_index):
-                        other_comp += \
+                        after += \
                             self.layers_info[self.model_list[idx]]['flops'] * self.lbound * self.lbound +\
                             self.layers_info[self.model_list[idx-2]]['flops']  * self.lbound + \
                                 self.layers_info[self.model_list[idx-3]]['flops'] * self.lbound + \
                                     self.layers_info[self.model_list[idx+1]]['flops'] * self.lbound + \
                                     self.layers_info[self.model_list[idx+3]]['flops'] * self.lbound
+
+                        # debug test
+                        # after += \
+                        #     self.layers_info[self.model_list[idx]]['flops'] * self.lbound  +\
+                        #     self.layers_info[self.model_list[idx-2]]['flops']  * self.lbound + \
+                        #         self.layers_info[self.model_list[idx-3]]['flops'] * self.lbound + \
+                        #             self.layers_info[self.model_list[idx+1]]['flops'] * self.lbound + \
+                        #             self.layers_info[self.model_list[idx+3]]['flops'] * self.lbound
         else:# conv3
             if after_prunable_index is not []:
                 block_center_index = after_prunable_index[::2]
                 for i,idx in enumerate(block_center_index):
-                        other_comp += \
+                        after += \
                             self.layers_info[self.model_list[idx]]['flops'] * self.lbound * self.lbound +\
                             self.layers_info[self.model_list[idx-2]]['flops']  * self.lbound + \
                                 self.layers_info[self.model_list[idx-3]]['flops'] * self.lbound + \
                                     self.layers_info[self.model_list[idx+1]]['flops'] * self.lbound + \
                                     self.layers_info[self.model_list[idx+3]]['flops'] * self.lbound
+
+                        # after += \
+                        #     self.layers_info[self.model_list[idx]]['flops'] * self.lbound  +\
+                        #     self.layers_info[self.model_list[idx-2]]['flops']  * self.lbound + \
+                        #         self.layers_info[self.model_list[idx-3]]['flops'] * self.lbound + \
+                        #             self.layers_info[self.model_list[idx+1]]['flops'] * self.lbound + \
+                        #             self.layers_info[self.model_list[idx+3]]['flops'] * self.lbound
+        other_comp +=after
         
         # min except prun ratio that this layer should done , aka max preserve ratio
         max_preserve_ratio = (self.expected_preserve_computation - other_comp) * 1. / this_comp 
@@ -1408,12 +1437,12 @@ class ChannelPruningEnv:
     #     return buffer_flop
 
     def _cur_flops(self):
-        """计算网络中目前的flops"""
+        """计算当前flops总量"""
         flops = 0
 
-        for i,idx in enumerate(self.prunable_index):
-            ops = self.model_list[idx]
-            c, n = self.strategy_dict[i]  # input, output pruning ratio
+        for i,ops in enumerate(self.flops_prunable_list_ops):
+            idx = self.flops_prunable_list_ops.index(ops)
+            c, n = self.strategy_dict[idx]  # input, output pruning ratio
             flops += self.layers_info[ops]['flops'] * c * n
         return flops
 

@@ -214,7 +214,7 @@ def train(num_episode, agent, env, output):
             
             print('#{}: episode_reward:{:.4f} acc: {:.4f},acc_:{:.4f}, ratio: {:.4f},TargetRatio: {:.4f},done:{:.4f},strategy:{}'.format(episode, episode_reward,
                                                                                  info['accuracy'],info['accuracy_'],
-                                                                                 info['compress_ratio'],env.curr_preserve_ratio,info['compress_ratio']/env.curr_preserve_ratio,info['strategy']))
+                                                                                 info['compress_ratio'],env.curr_preserve_ratio,env.curr_preserve_ratio-info['compress_ratio'],info['strategy']))
             
             final_reward = T[-1][0] # 最后的奖励
 
