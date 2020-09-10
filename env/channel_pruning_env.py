@@ -228,6 +228,7 @@ class ChannelPruningEnv:
         self.wsize_prunable_list = []
         self.flops_prunable_list = []
         self.flops_prunable_list_ops = []
+        self.org_channels = []
         # self.prunable_ops_mask = []
         
         
@@ -271,6 +272,9 @@ class ChannelPruningEnv:
                         self.prunable_index.append(n+6) # conv3
                         self.prunable_ops.append(m.conv2)
                         self.prunable_ops.append(m.conv3)
+                        self.org_channels.append(m.conv2.in_channels)
+                        self.org_channels.append(m.conv3.in_channels)
+                        
                         # self.prunable_ops_mask.append(self.replace_layer_with_mask_conv(m.conv2))
                         # self.prunable_ops_mask.append(self.replace_layer_with_mask_conv(m.conv3))
 
@@ -459,7 +463,9 @@ class ChannelPruningEnv:
         #     action = self.strategy_dict[self.prunable_index[self.cur_ind]][0] #取出这一层的动作
         # else: # 没有处理过，调用action的截断函数
 
-        action = self._action_wall(action)  # percentage to preserve
+        if not self.export_model:
+            action = self._action_wall(action)  # percentage to preserve
+        
         preserve_idx = None # 该层保存的通道索引
 
         # prune and update action
@@ -474,8 +480,8 @@ class ChannelPruningEnv:
         #                 self.visited[g_idx] = True
         #                 self.index_buffer[g_idx] = preserve_idx.copy()
 
-        # if self.export_model:  # export checkpoint
-        #     print('# Pruning {}: ratio: {}, d_prime: {}'.format(self.cur_ind, action, d_prime))
+        if self.export_model:  # export checkpoint
+            print('# Pruning {}: ratio: {}, d_prime: {}'.format(self.cur_ind, action, d_prime))
 
 
         self.strategy[self.curr_preserve_ratio].append(action)  # save action to strategy；这一层的保留率加进去
@@ -605,7 +611,7 @@ class ChannelPruningEnv:
 
 
             loc = self.curr_prunRatio_index
-            if reward > self.best_reward[self.curr_preserve_ratio]:
+            if reward > self.best_reward[self.curr_preserve_ratio] and not self.export_model:
                 import os 
                 
                 self.best_reward[self.curr_preserve_ratio] = reward
@@ -618,6 +624,7 @@ class ChannelPruningEnv:
                 
 
                 # write to txt log
+
                 with open(self.output, 'a') as text_writer:
                     text_writer.write('\n============TargetRatio:{}============\n'.format(self.curr_preserve_ratio))
                     text_writer.write(
@@ -636,9 +643,9 @@ class ChannelPruningEnv:
 
             obs = self.layer_embedding[self.cur_ind, :].copy()  # actually the same as the last state
             done = True
-            # if self.export_model:  # export state dict
-            #     torch.save(self.model.state_dict(), self.export_path)
-            #     return None, None, None, None
+            if self.export_model:  # export state dict
+                torch.save(self.model.state_dict(), self.export_path)
+                return None, None, None, None
             return obs, reward, done, info_set
 
         info_set = None

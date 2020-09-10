@@ -199,6 +199,64 @@ def export_model(env, args):
 
     return
 
+def get_model_and_checkpoint(model, dataset, checkpoint_path, n_gpu=1):
+    net = None
+    cadene = None
+
+    if args.dataset == 'cifar10':
+        if args.model == "mobilenet":
+            from models.mobilenet import MobileNet
+            net = MobileNet(n_class=10)
+        
+        elif args.model == "preresnet":
+            from models.preresnet import PreResNet
+            net = PreResNet(depth=56, num_classes=1000)
+        # elif args.model == "alexnet":
+        #     from models.alexnet import AlexNet
+        #     net = AlexNet(n_class=10)
+        # else:
+        #     net = _create_cifar10_model(arch, pretrained)
+
+    elif args.dataset == 'imagenet':
+        if args.model =="mobilenet":
+            from models.mobilenet import MobileNet
+            net = MobileNet(n_class=1000)
+        
+        elif args.model == "resnet50":
+            from models.resnet import ResNet
+            net = ResNet(depth=50, num_classes=1000)
+            
+        # else:
+        #     net, cadene = _create_imagenet_model(arch, pretrained)
+
+    # elif args.dataset == 'mnist':
+    #     net = _create_mnist_model(arch, pretrained)
+
+    if net is None:
+        raise NotImplementedError
+
+    # if model=="mobilenetv2":
+    #     try:
+    #         from torch.hub import load_state_dict_from_url
+    #     except ImportError:
+    #         from torch.utils.model_zoo import load_url as load_state_dict_from_url
+    #     state_dict = load_state_dict_from_url(
+    #         'https://www.dropbox.com/s/47tyzpofuuyyv1b/mobilenetv2_1.0-f2a8633.pth.tar?dl=1', progress=True)
+    #     net.load_state_dict(state_dict)
+    # else:
+
+    sd = torch.load(checkpoint_path)
+    if 'state_dict' in sd:  # a checkpoint but not a state_dict
+        sd = sd['state_dict']
+    sd = {k.replace('module.', ''): v for k, v in sd.items()}
+    net.load_state_dict(sd)
+    net = net.cuda()
+    if n_gpu > 1:
+        net = torch.nn.DataParallel(net, range(n_gpu))
+        net = net.cuda()
+
+    return net, deepcopy(net.state_dict())
+
 
 if __name__ == "__main__":
     # 获取参数

@@ -37,43 +37,43 @@
 
 
 // search mobilenetv1 on imagenet
-{
-    // 使用 IntelliSense 了解相关属性。 
-    // 悬停以查看现有属性的描述。
-    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
-    "version": "0.2.0",
-    "python.terminal.activateEnvironment":true,
-    "configurations": [
-        {
-            "name": "Python: 当前文件",
-            "type": "python",
-            "request": "launch",
-            "program": "${file}",
-            "console": "integratedTerminal",
-            "cwd": "${fileDirname}",
-            "args":[
-                "--job","debug",
-                "--model","resnet50" ,
-                "--dataset","imagenet",
-                "--lbound","0.3" ,
-                "--rbound","1" ,
-                "--reward","acc_reward" ,
-                "--data_root","/home/dataset/imagenet" ,
-                "--ckpt_path","/home/young/liuyixin/8.29/CAMC/checkpoints/resnet50-19c8e357.pth" ,
-                "--seed","2020",
-                "--data_bsize","16",
-                "--n_gpu","1",
-                "--warmup","10",
-                "--rmsize","10",
-                "--train_episode","50",
-                "--suffix","DEV_DEBUG",
-                "--model_cached_ckp","/home/young/liuyixin/8.29/CAMC/cached/_ckp.pth.tar",
-                "--n_calibration_batches","5"
-            ]
-        }
+// {
+//     // 使用 IntelliSense 了解相关属性。 
+//     // 悬停以查看现有属性的描述。
+//     // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+//     "version": "0.2.0",
+//     "python.terminal.activateEnvironment":true,
+//     "configurations": [
+//         {
+//             "name": "Python: 当前文件",
+//             "type": "python",
+//             "request": "launch",
+//             "program": "${file}",
+//             "console": "integratedTerminal",
+//             "cwd": "${fileDirname}",
+//             "args":[
+//                 "--job","debug",
+//                 "--model","resnet50" ,
+//                 "--dataset","imagenet",
+//                 "--lbound","0.3" ,
+//                 "--rbound","1" ,
+//                 "--reward","acc_reward" ,
+//                 "--data_root","/home/dataset/imagenet" ,
+//                 "--ckpt_path","/home/young/liuyixin/8.29/CAMC/checkpoints/resnet50-19c8e357.pth" ,
+//                 "--seed","2020",
+//                 "--data_bsize","16",
+//                 "--n_gpu","1",
+//                 "--warmup","10",
+//                 "--rmsize","10",
+//                 "--train_episode","50",
+//                 "--suffix","exportTest",
+//                 "--model_cached_ckp","/home/young/liuyixin/8.29/CAMC/cached/_ckp.pth.tar",
+//                 "--n_calibration_batches","60"
+//             ]
+//         }
         
-    ]
-}
+//     ]
+// }
 
 
 
@@ -136,3 +136,41 @@
         
 //     ]
 // }
+
+
+
+
+//export model
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "python.terminal.activateEnvironment":true,
+    "configurations": [
+        {
+            "name": "Python: 当前文件",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "cwd": "${fileDirname}",
+            "args":[
+                "--job","export",
+    "--model","resnet50",
+    "--dataset","imagenet",
+    "--data_root","/home/dataset/imagenet",
+    "--ckpt_path","/home/young/liuyixin/8.29/CAMC/checkpoints/resnet50-19c8e357.pth",
+    "--seed","2020",
+    "--n_calibration_batches","60",
+    "--n_worker","4",
+    "--channels","53,48,50,48,50,48,111,97,100,96,99,96,98,96,226,198,201,198,200,198,199,198,199,197,199,197,472,421,425,421,424,295",
+    "--export_path","/home/young/liuyixin/8.29/CAMC/checkpoints/resnet50_imagenet_0.8flops_export.pth.tar",
+    "--model_cached_ckp","/home/young/liuyixin/8.29/CAMC/cached/_ckp.pth.tar"
+                
+            ]
+        }
+        
+    ]
+}
+

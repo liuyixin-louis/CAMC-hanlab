@@ -96,17 +96,6 @@ def parse_args():
 
 
 def get_model_and_checkpoint(model, dataset, checkpoint_path, n_gpu=1):
-    # if model == 'mobilenet' and dataset == 'imagenet':
-    #     from models.mobilenet import MobileNet
-    #     net = MobileNet(n_class=1000)
-    # elif model == 'mobilenetv2' and dataset == 'imagenet':
-    #     from models.mobilenet_v2 import MobileNetV2
-    #     net = MobileNetV2(n_class=1000)
-    # elif model == "mobilenet" and dataset =="cifar10":
-    #     from models.mobilenet import MobileNet
-    #     net = MobileNet(n_class=10)
-    # else:
-    #     raise NotImplementedError
     net = None
     cadene = None
 

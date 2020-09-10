@@ -1,11 +1,11 @@
-python amc_search.py \
+python export.py \
     --job=export \
-    --model=mobilenet \
+    --model=resnet50 \
     --dataset=imagenet \
-    --data_root=/dataset/imagenet \
-    --ckpt_path=./checkpoints/mobilenet_imagenet.pth.tar \
-    --seed=2018 \
-    --n_calibration_batches=300 \
-    --n_worker=32 \
-    --channels=3,24,48,96,80,192,200,328,352,368,360,328,400,736,752 \
-    --export_path=./checkpoints/mobilenet_0.5flops_export.pth.tar
+    --data_root=/home/dataset/imagenet \
+    --ckpt_path=/home/young/liuyixin/8.29/CAMC/checkpoints/resnet50-19c8e357.pth \
+    --seed=2020 \
+    --n_calibration_batches=60 \
+    --n_worker=4 \
+    --channels=53,48,50,48,50,48,111,97,100,96,99,96,98,96,226,198,201,198,200,198,199,198,199,197,199,197,472,421,425,421,424,295 \
+    --export_path=/home/young/liuyixin/8.29/CAMC/checkpoints/resnet50_imagenet_0.8flops_export.pth.tar
